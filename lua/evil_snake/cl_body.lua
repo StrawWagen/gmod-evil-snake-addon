@@ -7,20 +7,12 @@ local sqrt, sin, cos, max, min, abs = math.sqrt, math.sin, math.cos, math.max, m
 
 local SUB = 4
 local SIDES = 20
-local OUTER = 4
-local ROLL = 9
 local BOWL = 7
-local RIM = 0.24
-local POKE = 0.7
-local TUCK = 1.1
-local CLEAR = 0.03
-local SPREAD = 1 + math.cos(TUCK) + TUCK * 0.5
-local IDLE = 0.45
-local GULLET = 0.75
+local MAW = 0.85
+local GULLET = 0.9
 local RIB = 0.12
 local THROAT = { 120, 28, 38 }
-local DARK = 0.2
-local GROOVE = 0.6
+local DARK = 0.1
 local PAD = 4
 local RELIGHT = 3
 local BATCH = 100
@@ -65,62 +57,34 @@ local function Ring(x, y, z, dx, dy, dz, w, nr, ax, joint, r, g, b)
 	rr[count], rg[count], rb[count] = r or cr, g or cg, b or cb
 end
 
-local function Tint(t, shade)
-	return Lerp(t, cr, THROAT[1]) * shade, Lerp(t, cg, THROAT[2]) * shade, Lerp(t, cb, THROAT[3]) * shade
-end
-
 function Body.Snug(fit, R)
-	return max(1, (fit / R + RIM * SPREAD) / (1 - CLEAR))
+	return max(1, fit / (R * MAW))
 end
 
-local fz, fr, fw, fcr, fcg, fcb = {}, {}, {}, {}, {}, {}
-local fn = 0
+local fz, fr, fcr, fcg, fcb = {}, {}, {}, {}, {}
+local headP, headDir, headW
 
-local function Point(z, rho, w, r, g, b)
-	fn = fn + 1
-	fz[fn], fr[fn], fw[fn] = z, rho, w
-	fcr[fn], fcg[fn], fcb[fn] = r or cr, g or cg, b or cb
-end
-
-local function Mouth(p, back, W, R, mouth)
+local function Gullet(p, back, W, mouth)
 	local fwd = -back
-	local open = mouth and mouth.open or 0
-	local dir = mouth and mouth.dir and LerpVector(open, fwd, mouth.dir):GetNormalized() or fwd
-	local t = R * RIM
-	local ap = Lerp(open, W * IDLE, mouth and mouth.fit or 0)
-	ap = math.Clamp(ap, R * 0.05, max(W * (1 - CLEAR) - t * SPREAD, R * 0.05))
-	local rc = ap + t
-	local zc = sqrt(max(W * W - rc * rc, 0)) + t * POKE
-	local deep = W * GULLET
-	fn = 0
+	local dir = mouth and mouth.dir and LerpVector(mouth.open, fwd, mouth.dir):GetNormalized() or fwd
+	headP, headDir, headW = p, dir, W
+	local ap, deep = W * MAW, W * GULLET
 	for k = 0, BOWL - 1 do
 		local phi = (1 - k / BOWL) * math.pi * 0.5
 		local c = cos(phi)
 		local ridge = k > 0 and k % 2 == 0
-		Point(zc - deep * sin(phi), ap * c * (ridge and 1 - RIB or 1), 1, Tint(1, Lerp(c, DARK, 0.7) * (ridge and 1.25 or 1)))
+		local shade = Lerp(c, DARK, 0.6) * (ridge and 1.25 or 1)
+		fz[k + 1], fr[k + 1] = -deep * sin(phi), ap * c * (ridge and 1 - RIB or 1)
+		fcr[k + 1], fcg[k + 1], fcb[k + 1] = THROAT[1] * shade, THROAT[2] * shade, THROAT[3] * shade
 	end
-	local te = -TUCK
-	for k = 0, ROLL do
-		local th = math.pi - (math.pi - te) * k / ROLL
-		local c = cos(th)
-		Point(zc + t * sin(th), rc + t * c, 1, Tint(math.Clamp(-c * 2, 0, 1), Lerp(math.Clamp(-c, 0, 1), 1, 0.7)))
-	end
-	local edge = ap + t * SPREAD
-	local ac = math.acos(math.Clamp(edge / W, 0, 0.999))
-	for k = 0, OUTER - 1 do
-		local a = ac * (1 - k / OUTER)
-		local shade = k == 0 and GROOVE or 1
-		Point(W * sin(a), W * cos(a), a / ac, cr * shade, cg * shade, cb * shade)
-	end
-	fz[fn + 1], fr[fn + 1] = 0, W
-	for k = 1, fn do
+	fz[BOWL + 1], fr[BOWL + 1] = 0, W
+	for k = 1, BOWL do
 		local a, b = max(k - 1, 1), k + 1
 		local dz, dr = fz[b] - fz[a], fr[b] - fr[a]
 		local l = sqrt(dz * dz + dr * dr)
 		if l < 1e-6 then dz, dr, l = 1, 0, 1 end
-		local d = fw[k] >= 1 and dir or LerpVector(fw[k], fwd, dir):GetNormalized()
 		local z = fz[k]
-		Ring(p.x + d.x * z, p.y + d.y * z, p.z + d.z * z, -d.x, -d.y, -d.z, fr[k], -dz / l, -dr / l, 1, fcr[k], fcg[k], fcb[k])
+		Ring(p.x + dir.x * z, p.y + dir.y * z, p.z + dir.z * z, -dir.x, -dir.y, -dir.z, fr[k], -dz / l, -dr / l, 1, fcr[k], fcg[k], fcb[k])
 	end
 end
 
@@ -161,7 +125,7 @@ local function Rings(pts, bulges, R, link, mouth)
 	local m = #samples
 	local first = (samples[2] - samples[1]):GetNormalized()
 	Widths(m, n - 1, R, bulges, link)
-	Mouth(samples[1], first, widths[1], R, mouth)
+	Gullet(samples[1], first, widths[1], mouth)
 	for j = 1, m do
 		local a, b = max(j - 1, 1), min(j + 1, m)
 		local d = samples[b] - samples[a]
@@ -235,4 +199,5 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 		end
 		mesh.End()
 	end
+	EvilSnake.Head.Draw(body.light, headP, headDir, headW, mouth, cr, cg, cb)
 end

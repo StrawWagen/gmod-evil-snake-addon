@@ -168,7 +168,7 @@ function ENT:EvilPose(victim)
 	if not held or held.ent ~= victim then return end
 	local x = self.Chain.x
 	local depth = EvilSnake.Hold(CurTime() - held.at, held.hold)
-	local pos, ang = EvilSnake.HeldPlace(x[1], x[2], self:Radius(), victim:OBBMaxs().z * depth)
+	local pos, ang = EvilSnake.HeldPlace(x[1], x[2], victim:OBBMaxs().z * depth)
 	return pos, ang
 end
 
