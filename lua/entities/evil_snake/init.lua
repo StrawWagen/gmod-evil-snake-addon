@@ -62,6 +62,7 @@ function ENT:Initialize()
 	self.Stomach = EvilSnake.Stomach.New()
 	self.Stomach.onDigest = function(v) self:Absorb(v) end
 	self.Mind = EvilSnake.Brain.New()
+	self.Tongue = EvilSnake.Tongue.New()
 	Evil.Presence(self, { reach = PRESENCE_REACH, dread = DREAD, near = self.Nearest })
 end
 
@@ -105,13 +106,16 @@ function ENT:SendBody(ply)
 		net.WriteFloat(held.pace)
 		net.WriteFloat(held.size)
 	end
+	self.Tongue:Write()
 	if ply then net.Send(ply) else net.Broadcast() end
 end
 
-local function Edible(ent, snake)
+function EvilSnake.Edible(ent, snake)
 	return IsValid(ent) and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
 		and Evil.Claimable(ent, snake)
 end
+
+local Edible = EvilSnake.Edible
 
 function ENT:Mouth()
 	local x = self.Chain.x
@@ -182,6 +186,8 @@ function ENT:Chomp(size)
 end
 
 function ENT:EvilPose(victim)
+	local tongued = self.Tongue:Pose(victim)
+	if tongued then return tongued end
 	local held = self.Held
 	if not held or held.ent ~= victim then return end
 	local x = self.Chain.x
@@ -241,10 +247,11 @@ function ENT:Hold(now)
 end
 
 function ENT:OnRemove()
+	self.Tongue:Drop(self)
 	self:Release()
 end
 
-local function Reaches(ent, from, to, steps, reach)
+function EvilSnake.Reaches(ent, from, to, steps, reach)
 	for k = 0, steps do
 		local at = LerpVector(k / steps, from, to)
 		if ent:NearestPoint(at):Distance(at) <= reach then return true end
@@ -252,11 +259,13 @@ local function Reaches(ent, from, to, steps, reach)
 	return false
 end
 
+local Reaches = EvilSnake.Reaches
+
 function ENT:Catch(now)
 	local mouth = self:Mouth()
 	local from = self.LastMouth or mouth
 	self.LastMouth = mouth
-	if self.Held or Setting("hunt_npcs") == 0 then return end
+	if self.Held or self.Tongue:Busy() or Setting("hunt_npcs") == 0 then return end
 	local reach = Setting("bite_reach")
 	local travel = from:Distance(mouth)
 	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
@@ -272,7 +281,7 @@ function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
 	local yaw = EvilSnake.Chain.HeadYaw(c)
-	if self.Held then
+	if self.Held or self.Tongue:Busy() then
 		self.Prey, self.LastHead = nil, nil
 		if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
 		EvilSnake.Chain.Drive(c, yaw, 0)
@@ -338,6 +347,7 @@ function ENT:Think()
 	local slide = math.Round(c.slide or 0)
 	if slide ~= self:GetSlide() then self:SetSlide(slide) end
 	self:Catch(now)
+	if self.Tongue:Think(self, now, dt) then self.Dirty = true end
 	self:Hold(now)
 	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c)) then self.Dirty = true end
 	if self.Dirty and now >= (self.NextSend or 0) then

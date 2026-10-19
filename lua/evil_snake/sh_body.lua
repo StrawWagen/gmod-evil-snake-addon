@@ -97,3 +97,7 @@ function EvilSnake.HeldPlace(head, neck, depth)
 	fwd:Normalize()
 	return head - up * depth, fwd:AngleEx(up), up, head
 end
+
+EvilSnake.TONGUE_IN, EvilSnake.TONGUE_OUT, EvilSnake.TONGUE_WRAP, EvilSnake.TONGUE_BACK = 0, 1, 2, 3
+EvilSnake.TONGUE_BONE = "ValveBiped.Bip01_Spine2"
+EvilSnake.TONGUE_OPEN = 0.25
