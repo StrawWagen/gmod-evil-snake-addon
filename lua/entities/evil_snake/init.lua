@@ -24,6 +24,7 @@ local GULP = { "npc/barnacle/barnacle_gulp1.wav", "npc/barnacle/barnacle_gulp2.w
 local GULP_DELAY = 0.35
 local BITE_GAP = 0.15
 local EAT_LEVEL = 80
+local MIN_REACH = 4
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -144,12 +145,24 @@ function ENT:Chomp(v, now)
 	end)
 end
 
+local function Reaches(ent, from, to, steps, reach)
+	for k = 0, steps do
+		local at = LerpVector(k / steps, from, to)
+		if ent:NearestPoint(at):Distance(at) <= reach then return true end
+	end
+	return false
+end
+
 function ENT:Swallow(now)
-	if Setting("hunt_npcs") == 0 then return end
 	local mouth = self:Mouth()
+	local from = self.LastMouth or mouth
+	self.LastMouth = mouth
+	if Setting("hunt_npcs") == 0 then return end
 	local reach = Setting("bite_reach")
-	for _, ent in ipairs(ents.FindInSphere(mouth, reach)) do
-		if Edible(ent) and ent:NearestPoint(mouth):Distance(mouth) <= reach then
+	local travel = from:Distance(mouth)
+	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
+	for _, ent in ipairs(ents.FindInSphere((from + mouth) * 0.5, reach + travel * 0.5)) do
+		if Edible(ent) and Reaches(ent, from, mouth, steps, reach) then
 			local v = self.Stomach:Swallow(ent)
 			self:Chomp(v, now)
 			self.Dirty = true
