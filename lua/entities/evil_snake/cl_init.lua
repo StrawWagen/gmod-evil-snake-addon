@@ -19,6 +19,7 @@ local KEEP = 8
 local DRIFT = 0.05
 local FIT = 0.75
 local SHUT = { 0.9, 1.15 }
+local GULP = 1
 
 local min = math.min
 
@@ -157,6 +158,12 @@ function ENT:Think()
 	local held = snap.held
 	self.HeldDepth = 0
 	self.Gape = nil
+	for _, b in ipairs(bulges) do
+		if b.at < GULP then
+			self.Gape = { fit = 0, open = 0, snap = math.sin(math.pi * b.at / GULP) }
+			break
+		end
+	end
 	if held then
 		local depth, at, swell = EvilSnake.Hold(rt - held.at, held.hold)
 		local r = self:Radius()

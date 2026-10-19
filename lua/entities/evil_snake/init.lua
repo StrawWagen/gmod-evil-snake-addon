@@ -175,7 +175,20 @@ function ENT:EvilPose(victim)
 	return pos, ang
 end
 
+function ENT:Gulp(ent, now)
+	local size = EvilSnake.PreySize(ent)
+	self.Prey = nil
+	self:Bite(size)
+	local v = self.Stomach:Swallow(ent, 0)
+	self:Chomp(size)
+	self.Dirty = true
+	hook.Run("EvilSnakeSwallowed", self, v, ent)
+	ent:Remove()
+	self.NextDecide = now
+end
+
 function ENT:Grab(ent, now)
+	if not ent:IsPlayer() and Setting("instant_npcs") ~= 0 then return self:Gulp(ent, now) end
 	local size = EvilSnake.PreySize(ent)
 	self.Held = { ent = ent, at = now, hold = Setting("hold_time"), size = EvilSnake.BulgeSize(size), prey = size }
 	if not Evil.Pose(ent, self, { act = ACT_BARNACLE_PULL }) then
