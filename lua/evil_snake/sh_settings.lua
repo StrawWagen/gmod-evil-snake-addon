@@ -55,6 +55,8 @@ EvilSnake.SETTINGS = {
 		help = "Ground friction against the body sliding sideways" },
 	{ name = "bend", default = 1.3, min = 0, max = 2, decimals = 2, label = "Bend limit",
 		help = "Closest every other joint can get, in segment lengths. Lower lets it coil tighter" },
+	{ name = "self_collide", default = 1, min = 0, max = 1, label = "Self collision",
+		help = "Body pushes off itself instead of passing through" },
 	{ name = "solver_passes", default = 8, min = 1, max = 32, decimals = 0, label = "Solver passes",
 		help = "Physics passes per step. More keeps the body from stretching but costs more" },
 }

@@ -17,6 +17,9 @@ local TRAIL_GAP = 4
 local REBASE = 2
 local TIP = 0.15
 local UP = Vector(0, 0, 1)
+local SELF_ARC = 1.6
+local SELF_MARGIN = 8
+local SELF_STIFF = 0.8
 
 function Chain.New(joints, filter)
 	local c = {
@@ -228,6 +231,107 @@ local function Steer(c)
 	return Vector(math.cos(heading), math.sin(heading), 0) * (c.speed * DT)
 end
 
+local function CellKey(x, y, z)
+	return (x + 2048) + (y + 2048) * 4096 + (z + 2048) * 16777216
+end
+
+local function Nearby(c, p, n, link)
+	local hull = c.hull
+	local widest = 0
+	for i = 1, n do widest = math.max(widest, hull[i]) end
+	widest = widest / HULL
+	local cell = link + widest * 2 + SELF_MARGIN
+	local grid, at = {}, {}
+	for s = 1, n - 1 do
+		local a, b = p[s], p[s + 1]
+		local gx = math.floor((a.x + b.x) * 0.5 / cell)
+		local gy = math.floor((a.y + b.y) * 0.5 / cell)
+		local gz = math.floor((a.z + b.z) * 0.5 / cell)
+		at[s] = { gx, gy, gz }
+		local key = CellKey(gx, gy, gz)
+		local bucket = grid[key]
+		if not bucket then
+			bucket = {}
+			grid[key] = bucket
+		end
+		bucket[#bucket + 1] = s
+	end
+	local found = {}
+	for s = 1, n - 1 do
+		local g = at[s]
+		local rs = math.max(hull[s], hull[s + 1]) / HULL
+		for dx = -1, 1 do
+			for dy = -1, 1 do
+				for dz = -1, 1 do
+					local bucket = grid[CellKey(g[1] + dx, g[2] + dy, g[3] + dz)]
+					if bucket then
+						for _, t in ipairs(bucket) do
+							if t > s + 1 then
+								local rt = math.max(hull[t], hull[t + 1]) / HULL
+								if (t - s) * link >= (rs + rt) * SELF_ARC then
+									found[#found + 1] = s
+									found[#found + 1] = t
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	return found
+end
+
+local function Push(p, i, wx, wy, wz)
+	local v = p[i]
+	v:SetUnpacked(v.x + wx, v.y + wy, v.z + wz)
+end
+
+local function Separate(c, p, found)
+	local hull = c.hull
+	for k = 1, #found, 2 do
+		local i, j = found[k], found[k + 1]
+		local p1, q1, p2, q2 = p[i], p[i + 1], p[j], p[j + 1]
+		local d1x, d1y, d1z = q1.x - p1.x, q1.y - p1.y, q1.z - p1.z
+		local d2x, d2y, d2z = q2.x - p2.x, q2.y - p2.y, q2.z - p2.z
+		local rx, ry, rz = p1.x - p2.x, p1.y - p2.y, p1.z - p2.z
+		local a = d1x * d1x + d1y * d1y + d1z * d1z
+		local e = d2x * d2x + d2y * d2y + d2z * d2z
+		if a > 1e-6 and e > 1e-6 then
+			local b = d1x * d2x + d1y * d2y + d1z * d2z
+			local cc = d1x * rx + d1y * ry + d1z * rz
+			local f = d2x * rx + d2y * ry + d2z * rz
+			local denom = a * e - b * b
+			local s = denom > 1e-6 and math.Clamp((b * f - cc * e) / denom, 0, 1) or 0
+			local t = (b * s + f) / e
+			if t < 0 then
+				t, s = 0, math.Clamp(-cc / a, 0, 1)
+			elseif t > 1 then
+				t, s = 1, math.Clamp((b - cc) / a, 0, 1)
+			end
+			local nx = rx + d1x * s - d2x * t
+			local ny = ry + d1y * s - d2y * t
+			local nz = rz + d1z * s - d2z * t
+			local dist = math.sqrt(nx * nx + ny * ny + nz * nz)
+			local reach = (Lerp(s, hull[i], hull[i + 1]) + Lerp(t, hull[j], hull[j + 1])) / HULL
+			if dist < reach then
+				if dist > 1e-4 then
+					nx, ny, nz = nx / dist, ny / dist, nz / dist
+				else
+					nx, ny, nz = 0, 0, 1
+				end
+				local half = (reach - dist) * 0.5 * SELF_STIFF
+				local ks = half / ((1 - s) ^ 2 + s * s)
+				local kt = half / ((1 - t) ^ 2 + t * t)
+				Push(p, i, nx * ks * (1 - s), ny * ks * (1 - s), nz * ks * (1 - s))
+				Push(p, i + 1, nx * ks * s, ny * ks * s, nz * ks * s)
+				Push(p, j, -nx * kt * (1 - t), -ny * kt * (1 - t), -nz * kt * (1 - t))
+				Push(p, j + 1, -nx * kt * t, -ny * kt * t, -nz * kt * t)
+			end
+		end
+	end
+end
+
 local function Tick(c)
 	local x, old, p, cn, cd = c.x, c.old, c.p, c.cn, c.cd
 	local n = #x
@@ -245,6 +349,8 @@ local function Tick(c)
 	else
 		c.driving = false
 	end
+	local found = Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
+	if found and #found == 0 then found = nil end
 	for _ = 1, Setting("solver_passes") do
 		for i = 1, n - 1 do
 			local d = p[i + 1] - p[i]
@@ -262,6 +368,7 @@ local function Tick(c)
 				p[i], p[i + 2] = p[i] + fix, p[i + 2] - fix
 			end
 		end
+		if found then Separate(c, p, found) end
 		for i = 1, n do
 			local normal = cn[i]
 			if normal then
