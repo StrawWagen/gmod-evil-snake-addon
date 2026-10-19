@@ -22,6 +22,10 @@ local SELF_MARGIN = 8
 local SELF_STIFF = 0.8
 local AIM = 3
 local SPIN = 6
+local SPIN_SPEED = 50
+local SWAY_EASE = 3
+local CLOSE = 0.5
+local TURN_SLOW = 0.35
 local PACE = 4
 local CRAWL = 1
 local MAX_BEND = 1.4
@@ -76,8 +80,8 @@ function Chain.HeadYaw(c)
 	return math.deg(math.atan2(d.y, d.x))
 end
 
-function Chain.Drive(c, yaw, speed)
-	c.goal, c.want = yaw, speed
+function Chain.Drive(c, yaw, speed, aim)
+	c.goal, c.want, c.aim = yaw, speed, aim
 	if speed > 0 then c.awake, c.still = true, 0 end
 end
 
@@ -228,18 +232,34 @@ local function Collide(c, i, from, to, along, gravity)
 end
 
 local function Steer(c)
+	local wave = Setting("wavelength")
 	local sway = Setting("sway")
+	local aim, dist = c.aim, nil
+	if aim then
+		local head = c.x[1]
+		local dx, dy = aim.x - head.x, aim.y - head.y
+		dist = math.max(math.sqrt(dx * dx + dy * dy), 1)
+		c.goal = math.deg(math.atan2(dy, dx))
+		sway = sway * math.Clamp(dist / wave - CLOSE, 0, 1)
+	end
+	c.sway = c.sway and c.sway + (sway - c.sway) * math.min(1, SWAY_EASE * DT) or sway
 	if not c.driving then
 		c.driving, c.spin = true, 0
-		c.yaw = Chain.HeadYaw(c) - sway * math.sin(c.phase)
+		c.yaw = Chain.HeadYaw(c) - c.sway * math.sin(c.phase)
 		Reseed(c)
 	end
 	local turn = Setting("turn_rate")
-	local want = math.Clamp(math.AngleDifference(c.goal, c.yaw) * AIM, -turn, turn)
-	c.spin = c.spin + (want - c.spin) * math.min(1, SPIN * DT)
+	local diff = math.AngleDifference(c.goal, c.yaw)
+	local want = diff * AIM
+	if dist then
+		local chase = math.deg(2 * math.sin(math.rad(diff)) * c.speed / dist)
+		if math.abs(chase) > math.abs(want) then want = chase end
+	end
+	want = math.Clamp(want, -turn, turn)
+	c.spin = c.spin + (want - c.spin) * math.min(1, (SPIN + c.speed / SPIN_SPEED) * DT)
 	c.yaw = c.yaw + c.spin * DT
-	c.phase = (c.phase + c.speed * DT / Setting("wavelength") * math.pi * 2) % (math.pi * 2)
-	local heading = math.rad(c.yaw + sway * math.sin(c.phase))
+	c.phase = (c.phase + c.speed * DT / wave * math.pi * 2) % (math.pi * 2)
+	local heading = math.rad(c.yaw + c.sway * math.sin(c.phase))
 	return Vector(math.cos(heading), math.sin(heading), 0) * (c.speed * DT)
 end
 
@@ -357,6 +377,9 @@ local function Tick(c)
 	local fall = Vector(0, 0, -gravity * DT * DT)
 	for i = 1, n do p[i] = x[i] + (x[i] - old[i]) * DAMP + fall end
 	local want = c.want or 0
+	if c.driving and c.goal then
+		want = want * math.max(math.cos(math.rad(math.AngleDifference(c.goal, c.yaw))), TURN_SLOW)
+	end
 	c.speed = c.speed + (want - c.speed) * math.min(1, PACE * DT)
 	if want <= 0 and c.speed < CRAWL then c.speed = 0 end
 	if c.speed > 0 then
@@ -368,6 +391,7 @@ local function Tick(c)
 	else
 		c.driving = false
 	end
+	local pin = c.driving and cn[1] ~= nil
 	local found = Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
 	if found and #found == 0 then found = nil end
 	for _ = 1, Setting("solver_passes") do
@@ -376,7 +400,11 @@ local function Tick(c)
 			local len = d:Length()
 			if len > 1e-4 then
 				local fix = d * ((len - link) / len * 0.5)
-				p[i], p[i + 1] = p[i] + fix, p[i + 1] - fix
+				if i == 1 and pin then
+					p[2] = p[2] - fix * 2
+				else
+					p[i], p[i + 1] = p[i] + fix, p[i + 1] - fix
+				end
 			end
 		end
 		for i = 1, n - 2 do
@@ -385,7 +413,11 @@ local function Tick(c)
 			local fold = folds[i]
 			if len < fold and len > 1e-4 then
 				local fix = d * ((len - fold) / len * 0.5)
-				p[i], p[i + 2] = p[i] + fix, p[i + 2] - fix
+				if i == 1 and pin then
+					p[3] = p[3] - fix * 2
+				else
+					p[i], p[i + 2] = p[i] + fix, p[i + 2] - fix
+				end
 			end
 		end
 		if found then Separate(c, p, found) end

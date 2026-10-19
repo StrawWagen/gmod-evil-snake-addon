@@ -194,7 +194,7 @@ function ENT:Decide(now)
 
 	if prey and now >= (self.DetourUntil or 0) then
 		local to = prey:WorldSpaceCenter() - head
-		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed"))
+		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed"), prey:WorldSpaceCenter())
 	elseif prey or Setting("wander") ~= 0 then
 		if now >= (self.NextWander or 0) then
 			self.WanderYaw = self.WanderYaw + math.Rand(-WANDER_TURN, WANDER_TURN)
