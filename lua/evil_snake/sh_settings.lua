@@ -86,53 +86,14 @@ EvilSnake.PRESETS = {
 	} },
 }
 
-local convars, byConVar = {}, {}
-for _, s in ipairs(EvilSnake.SETTINGS) do
-	s.convar = "evil_snake_" .. s.name
-	convars[s.name] = CreateConVar(s.convar, tostring(s.default), bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED), s.help or "", s.min, s.max)
-	byConVar[s.convar] = s
-end
+EvilSnake.Settings = Evil.Settings({
+	id = "evil_snake", title = "Evil snake", rows = EvilSnake.SETTINGS, presets = EvilSnake.PRESETS,
+})
 
 function EvilSnake.Setting(name)
-	return convars[name]:GetFloat()
-end
-
-function EvilSnake.PresetActive(preset)
-	for name, value in pairs(preset.values) do
-		if math.abs(convars[name]:GetFloat() - value) > 1e-3 then return false end
-	end
-	return true
+	return EvilSnake.Settings:Get(name)
 end
 
 function EvilSnake.Color()
-	local v = convars.color:GetInt()
-	return bit.rshift(v, 16), bit.band(bit.rshift(v, 8), 255), bit.band(v, 255)
+	return EvilSnake.Settings:Color("color")
 end
-
-if CLIENT then return end
-
-util.AddNetworkString("EvilSnakeSetting")
-
-net.Receive("EvilSnakeSetting", function(_, ply)
-	local s = byConVar[net.ReadString()]
-	local value = tonumber(net.ReadString())
-	if not s or not value or not IsValid(ply) or not ply:IsSuperAdmin() then return end
-	RunConsoleCommand(s.convar, tostring(math.Clamp(value, s.min, s.max)))
-end)
-
-concommand.Add("evil_snake_preset", function(ply, _, args)
-	if IsValid(ply) and not ply:IsSuperAdmin() then return end
-	local want = string.lower(args[1] or "")
-	for _, preset in ipairs(EvilSnake.PRESETS) do
-		if preset.name == want then
-			for name, value in pairs(preset.values) do
-				RunConsoleCommand("evil_snake_" .. name, tostring(value))
-			end
-			return
-		end
-	end
-	local names = {}
-	for _, preset in ipairs(EvilSnake.PRESETS) do names[#names + 1] = preset.name end
-	local msg = "evil_snake_preset " .. table.concat(names, "|")
-	if IsValid(ply) then ply:PrintMessage(HUD_PRINTCONSOLE, msg) else print(msg) end
-end, nil, "Apply a snake behaviour preset")
