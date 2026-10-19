@@ -6,18 +6,21 @@ local ASK = 1
 
 net.Receive("EvilSnakeBody", function()
 	local ent = net.ReadEntity()
-	local pts = {}
+	local pts, meals = {}, {}
 	for i = 1, net.ReadUInt(8) do pts[i] = net.ReadVector() end
-	if IsValid(ent) and ent.Snapshot then ent:Snapshot(pts) end
+	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat() } end
+	if IsValid(ent) and ent.Snapshot then ent:Snapshot(pts, meals) end
 end)
 
 function ENT:Initialize()
 	self.Body = EvilSnake.Body.New()
+	self.Bulges = {}
 end
 
-function ENT:Snapshot(pts)
+function ENT:Snapshot(pts, meals)
 	self.From = self.Pose and #self.Pose == #pts and self.Pose or pts
 	self.To = pts
+	self.Meals = meals
 	self.Since = RealTime()
 end
 
@@ -37,9 +40,16 @@ function ENT:Think()
 	local pose = {}
 	for i, p in ipairs(to) do pose[i] = t >= 1 and p or LerpVector(t, from[i], p) end
 	self.Pose = pose
-	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose))
+	local ahead = (now - self.Since) * EvilSnake.Setting("bulge_speed") / EvilSnake.Setting("segment_length")
+	local bulges, fattest = {}, 1
+	for i, m in ipairs(self.Meals) do
+		bulges[i] = { at = math.min(m.at + ahead, #pose - 1), size = m.size }
+		fattest = math.max(fattest, m.size)
+	end
+	self.Bulges = bulges
+	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest))
 end
 
 function ENT:Draw()
-	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose) end
+	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges) end
 end

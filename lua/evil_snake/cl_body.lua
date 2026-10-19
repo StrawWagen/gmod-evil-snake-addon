@@ -3,7 +3,7 @@ local Body = {}
 EvilSnake.Body = Body
 
 local Bright, CatmullRom = EvilSnake.Bright, EvilSnake.CatmullRom
-local sqrt, sin, cos, max, min = math.sqrt, math.sin, math.cos, math.max, math.min
+local sqrt, sin, cos, max, min, abs = math.sqrt, math.sin, math.cos, math.max, math.min, math.abs
 
 local SUB = 4
 local SIDES = 20
@@ -11,18 +11,21 @@ local CAP = 6
 local PAD = 4
 local RELIGHT = 3
 local BATCH = 100
+local SPAN = 1.3
+local SWELL_IN = 1
+local SWELL_OUT = 2
 
 function Body.New()
 	return { light = {}, lit = 0 }
 end
 
-function Body.Bounds(pts)
+function Body.Bounds(pts, fattest)
 	local mins, maxs = Vector(pts[1]), Vector(pts[1])
 	for _, p in ipairs(pts) do
 		mins.x, mins.y, mins.z = min(mins.x, p.x), min(mins.y, p.y), min(mins.z, p.z)
 		maxs.x, maxs.y, maxs.z = max(maxs.x, p.x), max(maxs.y, p.y), max(maxs.z, p.z)
 	end
-	local pad = EvilSnake.Setting("radius") * 2 + PAD
+	local pad = EvilSnake.Setting("radius") * (1 + (fattest or 1)) + PAD
 	return mins - Vector(pad, pad, pad), maxs + Vector(pad, pad, pad)
 end
 
@@ -37,27 +40,47 @@ local function Relight(body, pts)
 	end
 end
 
-local cx, cy, cz, tx, ty, tz, rw, rax, rlo = {}, {}, {}, {}, {}, {}, {}, {}, {}
+local cx, cy, cz, tx, ty, tz, rw, rnr, rax, rlo = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 local count = 0
 
-local function Ring(x, y, z, dx, dy, dz, w, ax, joint)
+local function Ring(x, y, z, dx, dy, dz, w, nr, ax, joint)
 	count = count + 1
 	cx[count], cy[count], cz[count] = x, y, z
 	tx[count], ty[count], tz[count] = dx, dy, dz
-	rw[count], rax[count], rlo[count] = w, ax, (joint - 1) * 6
+	rw[count], rnr[count], rax[count], rlo[count] = w, nr, ax, (joint - 1) * 6
 end
 
-local function Cap(p, dx, dy, dz, joint, outward)
-	local R = EvilSnake.Setting("radius")
+local function Cap(p, dx, dy, dz, joint, outward, R)
 	for k = 1, CAP do
 		local a = (outward and k or CAP + 1 - k) / CAP * math.pi * 0.5
-		local s = sin(a)
+		local s, c = sin(a), cos(a)
 		local o = outward and s * R or -s * R
-		Ring(p.x + dx * o, p.y + dy * o, p.z + dz * o, dx, dy, dz, cos(a) * R, outward and s or -s, joint)
+		Ring(p.x + dx * o, p.y + dy * o, p.z + dz * o, dx, dy, dz, c * R, c, outward and s or -s, joint)
 	end
 end
 
-local function Rings(pts)
+local widths = {}
+
+local function Widths(m, n, R, bulges)
+	local link = EvilSnake.Setting("segment_length")
+	for j = 1, m do widths[j] = R end
+	for _, b in ipairs(bulges) do
+		local swell = min(1, b.at / SWELL_IN, (n - b.at) / SWELL_OUT)
+		swell = swell * swell * (3 - 2 * swell)
+		local fat = R * (1 + (b.size - 1) * swell)
+		local reach = fat * SPAN
+		local lo = max(1, math.floor((b.at - reach / link) * SUB) + 1)
+		local hi = min(m, math.ceil((b.at + reach / link) * SUB) + 1)
+		for j = lo, hi do
+			local d = abs((j - 1) / SUB - b.at) * link
+			if d < reach then
+				widths[j] = max(widths[j], R + (fat - R) * (0.5 + 0.5 * cos(math.pi * d / reach)))
+			end
+		end
+	end
+end
+
+local function Rings(pts, bulges)
 	count = 0
 	local n = #pts
 	local samples = {}
@@ -69,16 +92,21 @@ local function Rings(pts)
 	local m = #samples
 	local first = (samples[2] - samples[1]):GetNormalized()
 	local last = (samples[m] - samples[m - 1]):GetNormalized()
-	local R = EvilSnake.Setting("radius")
-	Cap(samples[1], first.x, first.y, first.z, 1, false)
+	Widths(m, n - 1, EvilSnake.Setting("radius"), bulges)
+	Cap(samples[1], first.x, first.y, first.z, 1, false, widths[1])
 	for j = 1, m do
-		local d = (samples[min(j + 1, m)] - samples[max(j - 1, 1)]):GetNormalized()
+		local a, b = max(j - 1, 1), min(j + 1, m)
+		local d = samples[b] - samples[a]
+		local len = d:Length()
+		d:Normalize()
+		local slope = len > 1e-4 and (widths[b] - widths[a]) / len or 0
+		local inv = 1 / sqrt(1 + slope * slope)
 		local p = samples[j]
 		local link = math.floor((j - 1) / SUB)
 		local joint = min(n, link + 1 + ((j - 1) % SUB >= SUB / 2 and 1 or 0))
-		Ring(p.x, p.y, p.z, d.x, d.y, d.z, R, 0, joint)
+		Ring(p.x, p.y, p.z, d.x, d.y, d.z, widths[j], inv, -slope * inv, joint)
 	end
-	Cap(samples[m], last.x, last.y, last.z, n, true)
+	Cap(samples[m], last.x, last.y, last.z, n, true, widths[m])
 end
 
 local vx, vy, vz, vl = {}, {}, {}, {}
@@ -94,13 +122,12 @@ local function Vert(i)
 	mesh.AdvanceVertex()
 end
 
-function Body.Draw(body, pts)
+function Body.Draw(body, pts, bulges)
 	if #pts < 2 then return end
 	Relight(body, pts)
 	cr, cg, cb = EvilSnake.Color()
-	Rings(pts)
+	Rings(pts, bulges or {})
 	local tr = EvilSnake.Trig(SIDES)
-	local R = EvilSnake.Setting("radius")
 	local light = body.light
 	local nx, ny, nz = 0, 0, 1
 	for j = 1, count do
@@ -109,13 +136,12 @@ function Body.Draw(body, pts)
 		nx, ny, nz = nx - ax * d, ny - ay * d, nz - az * d
 		local nl = sqrt(nx * nx + ny * ny + nz * nz)
 		if nl < 1e-4 then
-			if math.abs(az) < 0.9 then nx, ny, nz = -ay, ax, 0 else nx, ny, nz = 0, -az, ay end
+			if abs(az) < 0.9 then nx, ny, nz = -ay, ax, 0 else nx, ny, nz = 0, -az, ay end
 			nl = sqrt(nx * nx + ny * ny + nz * nz)
 		end
 		nx, ny, nz = nx / nl, ny / nl, nz / nl
 		local bx, by, bz = ay * nz - az * ny, az * nx - ax * nz, ax * ny - ay * nx
-		local w, k = rw[j], rax[j]
-		local r = w / R
+		local w, r, k = rw[j], rnr[j], rax[j]
 		local px, py, pz, o = cx[j], cy[j], cz[j], rlo[j]
 		for q = 0, SIDES - 1 do
 			local cs, sn = tr.c[q], tr.s[q]

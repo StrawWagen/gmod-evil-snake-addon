@@ -14,6 +14,10 @@ local STUCK_TIME = 1
 local DETOUR = 1.5
 local WANDER_TURN = 90
 local WANDER_TIME = { 3, 7 }
+local MAX_SEGMENTS = 254
+local MAX_MEALS = 32
+local PREY_SIZE = 40
+local PREY_SCALE = { 0.6, 1.6 }
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -42,6 +46,7 @@ function ENT:Initialize()
 	self.LastThink = CurTime()
 	self.Dirty = true
 	self.WanderYaw = self:GetAngles().y
+	self.Meals = {}
 end
 
 function ENT:UpdateTransmitState()
@@ -54,6 +59,11 @@ function ENT:SendBody(ply)
 	net.WriteEntity(self)
 	net.WriteUInt(#x, 8)
 	for _, p in ipairs(x) do net.WriteVector(p) end
+	net.WriteUInt(#self.Meals, 6)
+	for _, m in ipairs(self.Meals) do
+		net.WriteFloat(m.at)
+		net.WriteFloat(m.size)
+	end
 	if ply then net.Send(ply) else net.Broadcast() end
 end
 
@@ -77,12 +87,43 @@ function ENT:FindPrey(from)
 	return best
 end
 
+function ENT:Absorb(meal)
+	self:SetSegments(math.min(self:GetSegments() + meal.grow, MAX_SEGMENTS))
+end
+
+function ENT:Eat(ent)
+	local f = math.Clamp(ent:BoundingRadius() / PREY_SIZE, PREY_SCALE[1], PREY_SCALE[2])
+	if #self.Meals >= MAX_MEALS then self:Absorb(table.remove(self.Meals, 1)) end
+	self.Meals[#self.Meals + 1] = {
+		at = 0,
+		size = 1 + (Setting("bulge_size") - 1) * f,
+		grow = math.Round(Setting("growth") * f),
+	}
+	self.Dirty = true
+end
+
+function ENT:Digest(dt)
+	local meals = self.Meals
+	if #meals == 0 then return end
+	local rate = Setting("bulge_speed") / Setting("segment_length") * dt
+	for i = #meals, 1, -1 do
+		local m = meals[i]
+		m.at = m.at + rate
+		if m.at >= self:GetSegments() then
+			table.remove(meals, i)
+			self:Absorb(m)
+		end
+	end
+	self.Dirty = true
+end
+
 function ENT:Swallow(now)
 	if Setting("hunt_npcs") == 0 then return end
 	local mouth = self:Mouth()
 	local reach = Setting("bite_reach")
 	for _, ent in ipairs(ents.FindInSphere(mouth, reach)) do
 		if Edible(ent) and ent:NearestPoint(mouth):Distance(mouth) <= reach then
+			self:Eat(ent)
 			ent:Remove()
 			if ent == self.Prey then
 				self.Prey = nil
@@ -150,6 +191,7 @@ function ENT:Think()
 		self.Dirty = true
 	end
 	self:Swallow(now)
+	self:Digest(dt)
 	if self.Dirty and now >= (self.NextSend or 0) then
 		self.Dirty = false
 		self.NextSend = now + EvilSnake.SEND
