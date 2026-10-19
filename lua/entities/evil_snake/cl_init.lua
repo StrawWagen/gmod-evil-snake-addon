@@ -23,12 +23,10 @@ function ENT:Draw()
 		self.BodyMesh, self.Eyes, self.Head = EvilSnake.Body.Build(self.Ground, self.Normals)
 	end
 	EvilSnake.Body.Draw(self.BodyMesh, self.Eyes)
-	if not IsValid(self.Crab) then self.Crab = EvilSnake.Mouth.Create() end
-	EvilSnake.Mouth.Draw(self.Crab, self.Head)
+	EvilSnake.Mouth.Draw(self.Head)
 end
 
 function ENT:OnRemove()
 	if self.BodyMesh then self.BodyMesh:Destroy() end
 	self.BodyMesh = nil
-	if IsValid(self.Crab) then self.Crab:Remove() end
 end

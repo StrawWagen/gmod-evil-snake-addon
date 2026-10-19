@@ -39,7 +39,6 @@ local EYE_OUT = 0.8
 local EYE_UP = 0.55
 local EYE_RADIUS = 0.75
 local EYE_COLOR = Color(10, 8, 4)
-local THROAT = Vector(34, 10, 8)
 
 local function Smooth(x)
 	x = math.Clamp(x, 0, 1)
@@ -138,14 +137,14 @@ end
 local AXES = { Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0), Vector(0, 0, 1), Vector(0, 0, -1) }
 local cube = { 0, 0, 0, 0, 0, 0 }
 
-local function SampleLight(pos)
+function Body.SampleLight(pos)
 	for i, axis in ipairs(AXES) do
 		local c = render.ComputeLighting(pos, axis) + render.ComputeDynamicLighting(pos, axis)
 		cube[i] = (c.x + c.y + c.z) / 3
 	end
 end
 
-local function Bright(n)
+function Body.Bright(n)
 	local l = n.x * n.x * (n.x > 0 and cube[1] or cube[2])
 		+ n.y * n.y * (n.y > 0 and cube[3] or cube[4])
 		+ n.z * n.z * (n.z > 0 and cube[5] or cube[6])
@@ -167,18 +166,18 @@ end
 
 local function Ring(spine, d, hint)
 	local base, side, up, w, h, j = Frame(spine, d, hint)
-	SampleLight(base + up * h)
+	Body.SampleLight(base + up * h)
 	local ring = {}
 	for k = 0, SIDES - 1 do
 		local c, s = trig[k][1], trig[k][2]
 		local hs = s < 0 and h * BELLY_FLAT or h
 		local normal = (side * (c / math.max(w, 0.01)) + up * (s / math.max(hs, 0.01))):GetNormalized()
-		ring[k] = { base + side * (c * w) + up * (s * hs), Shade(d, c, s) * Bright(normal) }
+		ring[k] = { base + side * (c * w) + up * (s * hs), Shade(d, c, s) * Body.Bright(normal) }
 	end
 	return ring, j
 end
 
-local function Vert(v)
+function Body.Vert(v)
 	mesh.Position(v[1])
 	mesh.TexCoord(0, 0, 0)
 	mesh.Color(math.min(255, v[2].x), math.min(255, v[2].y), math.min(255, v[2].z), 255)
@@ -196,32 +195,23 @@ function Body.Build(ground, normals)
 		d = math.min(d + (fine and FINE or COARSE), total)
 	end
 
-	local mouth, side, up, _, mh, _, tangent = Frame(spine, 0)
-	SampleLight(mouth + up * mh)
-	local throat = { mouth, THROAT * Bright(-tangent) }
-
 	local obj = Mesh(Body.Material)
-	mesh.Begin(obj, MATERIAL_QUADS, #rings * SIDES)
-	for k = 0, SIDES - 1 do
-		local k2 = (k + 1) % SIDES
-		Vert(throat)
-		Vert({ rings[1][k2][1], throat[2] })
-		Vert({ rings[1][k][1], throat[2] })
-		Vert(throat)
-	end
+	mesh.Begin(obj, MATERIAL_QUADS, (#rings - 1) * SIDES)
 	for r = 1, #rings - 1 do
 		local a, b = rings[r], rings[r + 1]
 		for k = 0, SIDES - 1 do
 			local k2 = (k + 1) % SIDES
-			Vert(a[k])
-			Vert(a[k2])
-			Vert(b[k2])
-			Vert(b[k])
+			Body.Vert(a[k])
+			Body.Vert(a[k2])
+			Body.Vert(b[k2])
+			Body.Vert(b[k])
 		end
 	end
 	mesh.End()
 
-	local head = { pos = mouth, fwd = -tangent, up = up, side = side }
+	local mouth, side, up, mw, mh, _, tangent = Frame(spine, 0)
+	local below = mh * BELLY_FLAT
+	local head = { pos = mouth, fwd = -tangent, up = up, side = side, w = mw, h = mh, below = below, floor = mouth - up * below }
 	local base, eside, eup, w, h = Frame(spine, HEAD_LENGTH * EYE_AT)
 	local eyes = {}
 	for _, dir in ipairs({ 1, -1 }) do
