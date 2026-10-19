@@ -160,7 +160,7 @@ function ENT:Think()
 		local depth, at, swell = EvilSnake.Hold(rt - held.at, held.hold)
 		local r = self:Radius()
 		local fit = Fit(held.ent, r)
-		local snug = EvilSnake.Body.Snug(fit, r)
+		local snug = EvilSnake.Body.Snug(fit, EvilSnake.Body.HeadRadius(r))
 		bulges[#bulges + 1] = { at = at, size = Lerp(at, snug, held.size), swell = swell }
 		fattest = math.max(fattest, held.size, snug)
 		self.HeldDepth = depth

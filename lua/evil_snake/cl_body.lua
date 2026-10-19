@@ -18,6 +18,7 @@ local RELIGHT = 3
 local BATCH = 100
 local SPAN = 1.3
 local SWELL_IN = 1
+local NECK = 3
 
 function Body.New()
 	return { light = {}, lit = 0, eyes = {} }
@@ -55,6 +56,11 @@ local function Ring(x, y, z, dx, dy, dz, w, nr, ax, joint, r, g, b)
 	tx[count], ty[count], tz[count] = dx, dy, dz
 	rw[count], rnr[count], rax[count], rlo[count] = w, nr, ax, (joint - 1) * 6
 	rr[count], rg[count], rb[count] = r or cr, g or cg, b or cb
+end
+
+function Body.HeadRadius(R)
+	if EvilSnake.Setting("static_head") == 0 then return R end
+	return min(R, EvilSnake.Setting("radius"))
 end
 
 function Body.Snug(fit, R)
@@ -95,6 +101,16 @@ local function Widths(m, n, R, bulges, link)
 	for j = 1, m do
 		widths[j] = R * EvilSnake.Profile((j - 1) / (m - 1), body, tail)
 		swells[j] = 1
+	end
+	local head = Body.HeadRadius(R)
+	if head < R then
+		local reach = NECK * R
+		for j = 1, m do
+			local d = (j - 1) / SUB * link
+			if d >= reach then break end
+			local u = d / reach
+			widths[j] = widths[j] * Lerp(u * u * (3 - 2 * u), head / R, 1)
+		end
 	end
 	for _, b in ipairs(bulges) do
 		local swell = b.swell or min(1, b.at / SWELL_IN)

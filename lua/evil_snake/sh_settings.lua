@@ -48,6 +48,8 @@ EvilSnake.SETTINGS = {
 	{ name = "tail_length", default = 0.3, min = 0.05, max = 1, decimals = 2, label = "Tail length",
 		help = "How much of the body tapers down to the tail tip" },
 	{ name = "teeth", default = 0, min = 0, max = 1, label = "Teeth" },
+	{ name = "static_head", default = 1, min = 0, max = 1, label = "Static head size",
+		help = "Head stays the same size as it eats, only the body gets fatter" },
 	{ name = "color", default = 9858664, min = 0, max = 16777215, color = true, label = "Colour" },
 	{ name = "slither_volume", default = 1, min = 0, max = 1, decimals = 2, label = "Slither volume" },
 	{ name = "eat_volume", default = 1, min = 0, max = 1, decimals = 2, label = "Eating volume" },
