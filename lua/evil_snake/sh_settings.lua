@@ -1,6 +1,8 @@
 EvilSnake = EvilSnake or {}
 
 EvilSnake.SETTINGS = {
+	{ name = "segments", default = 28, min = 4, max = 80, decimals = 0, label = "Body segments",
+		help = "Each segment adds 17 units of body. Applies to snakes spawned after the change" },
 }
 
 local convars, byConVar = {}, {}

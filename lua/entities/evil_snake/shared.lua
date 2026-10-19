@@ -8,5 +8,5 @@ ENT.DoNotDuplicate = true
 ENT.DisableDuplicator = true
 
 function ENT:SetupDataTables()
-	self:NetworkVar("Int", 0, "Seed")
+	self:NetworkVar("Int", 0, "Segments")
 end

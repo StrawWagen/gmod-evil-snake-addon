@@ -22,11 +22,6 @@ function EvilSnake.Bright(cube, o, nx, ny, nz)
 	return math.min(1.6, 0.08 + math.sqrt(l) * 1.3)
 end
 
-function EvilSnake.Smooth(x)
-	x = math.Clamp(x, 0, 1)
-	return x * x * (3 - 2 * x)
-end
-
 function EvilSnake.CatmullRom(p0, p1, p2, p3, t)
 	local t2 = t * t
 	local t3 = t2 * t
