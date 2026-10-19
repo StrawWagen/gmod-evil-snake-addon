@@ -31,6 +31,8 @@ local LATE = 1
 local STUCK = 90
 local STUCK_TIME = 3
 local LET_GO = 2
+local FEAR = 30
+local FEAR_RANGE = 900
 local WRITHE = { 0.12, 0.4 }
 local WRITHE_PUSH = 220
 local PULL_GAP = { 0.6, 1.2 }
@@ -149,6 +151,7 @@ function Tongue:Wrap(snake, ent, now)
 	self.writhe, self.pull = now, now + math.Rand(PULL_GAP[1], PULL_GAP[2])
 	snake.Prey = nil
 	Say(snake, table.Random(SLAP), 1, self.tip)
+	Evil.Frighten(self.tip, FEAR_RANGE, FEAR, true)
 	hook.Run("EvilSnakeTongued", snake, ent)
 end
 
