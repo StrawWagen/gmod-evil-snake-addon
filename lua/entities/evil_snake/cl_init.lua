@@ -12,7 +12,6 @@ local SLITHER_FADE = 0.15
 local SLITHER_GAP = 0.1
 local SLITHER_REST = 1
 local SLITHER_LEVEL = 75
-local WEIGHT = 14 * 14 * 28 * 17
 local HEAVIEST = 8
 
 net.Receive("EvilSnakeBody", function()
@@ -33,11 +32,6 @@ function ENT:Snapshot(pts, meals)
 	self.To = pts
 	self.Meals = meals
 	self.Since = RealTime()
-end
-
-function ENT:Weight()
-	local r = self:Radius()
-	return r * r * math.max(self:GetLength(), 1) * EvilSnake.Setting("segment_length") / WEIGHT
 end
 
 function ENT:Slither(now)

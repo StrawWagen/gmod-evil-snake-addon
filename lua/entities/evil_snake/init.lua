@@ -14,6 +14,16 @@ local STUCK_TIME = 1
 local DETOUR = 1.5
 local WANDER_TURN = 90
 local WANDER_TIME = { 3, 7 }
+local BITE = "npc/ichthyosaur/snap.wav"
+local CRUNCH = { "npc/barnacle/barnacle_crunch2.wav", "npc/barnacle/barnacle_crunch3.wav" }
+local SQUISH = {
+	"physics/flesh/flesh_squishy_impact_hard1.wav", "physics/flesh/flesh_squishy_impact_hard2.wav",
+	"physics/flesh/flesh_squishy_impact_hard3.wav", "physics/flesh/flesh_squishy_impact_hard4.wav",
+}
+local GULP = { "npc/barnacle/barnacle_gulp1.wav", "npc/barnacle/barnacle_gulp2.wav" }
+local GULP_DELAY = 0.35
+local BITE_GAP = 0.15
+local EAT_LEVEL = 80
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -116,6 +126,23 @@ function ENT:Rethink()
 	self:Grow()
 end
 
+function ENT:Chomp(v, now)
+	if now < (self.NextBite or 0) then return end
+	self.NextBite = now + BITE_GAP
+	local volume = EvilSnake.Setting("eat_volume")
+	if volume <= 0 then return end
+	local mass = math.max(self:Weight(), 1e-3)
+	local pitch = math.Clamp(105 / mass ^ 0.1 / v.size ^ 0.25, 50, 160)
+	local level = EAT_LEVEL + math.Clamp(math.log(mass, 2) * 2, 0, 10)
+	local loud = math.min(volume * (0.7 + 0.3 * v.size), 1)
+	self:EmitSound(BITE, level, pitch * math.Rand(0.95, 1.05), loud)
+	self:EmitSound(table.Random(CRUNCH), level, pitch * math.Rand(0.9, 1.1), loud)
+	self:EmitSound(table.Random(SQUISH), level, pitch * math.Rand(0.9, 1.1), loud * 0.8)
+	timer.Simple(GULP_DELAY * v.size, function()
+		if IsValid(self) then self:EmitSound(table.Random(GULP), level, pitch * 0.9, loud) end
+	end)
+end
+
 function ENT:Swallow(now)
 	if Setting("hunt_npcs") == 0 then return end
 	local mouth = self:Mouth()
@@ -123,6 +150,7 @@ function ENT:Swallow(now)
 	for _, ent in ipairs(ents.FindInSphere(mouth, reach)) do
 		if Edible(ent) and ent:NearestPoint(mouth):Distance(mouth) <= reach then
 			local v = self.Stomach:Swallow(ent)
+			self:Chomp(v, now)
 			self.Dirty = true
 			hook.Run("EvilSnakeSwallowed", self, v, ent)
 			ent:Remove()
