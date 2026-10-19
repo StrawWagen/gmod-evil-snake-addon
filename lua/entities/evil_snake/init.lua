@@ -163,19 +163,24 @@ function ENT:Chomp(size)
 	end)
 end
 
+function ENT:EvilPose(victim)
+	local held = self.Held
+	if not held or held.ent ~= victim then return end
+	local x = self.Chain.x
+	local depth = EvilSnake.Hold(CurTime() - held.at, held.hold)
+	local pos, ang = EvilSnake.HeldPlace(x[1], x[2], self:Radius(), victim:OBBMaxs().z * depth)
+	return pos, ang
+end
+
 function ENT:Grab(ent, now)
-	if not Evil.Claim(ent, self) then return end
-	Evil.Freeze(ent)
 	local size = EvilSnake.PreySize(ent)
 	self.Held = { ent = ent, at = now, hold = Setting("hold_time"), size = EvilSnake.BulgeSize(size), prey = size }
-	local seq = ACT_BARNACLE_PULL and ent:SelectWeightedSequence(ACT_BARNACLE_PULL)
-	if seq and seq >= 0 then
-		ent:ResetSequence(seq)
-		ent:SetCycle(0)
+	if not Evil.Pose(ent, self, { act = ACT_BARNACLE_PULL }) then
+		self.Held = nil
+		return
 	end
 	self.Prey = nil
 	self:Bite(size)
-	self:Place()
 	self.Dirty = true
 	hook.Run("EvilSnakeGrabbed", self, ent)
 end
@@ -186,23 +191,13 @@ function ENT:Release()
 	self.Dirty = true
 	if not held or Evil.Owner(held.ent) ~= self then return end
 	local ent = held.ent
-	Evil.Unclaim(ent, self)
-	Evil.Thaw(ent)
+	Evil.Unpose(ent, self)
 	ent:SetPos(self:Mouth())
 	ent:SetAngles(Angle(0, ent:GetAngles().y, 0))
 	hook.Run("EvilSnakeReleased", self, ent)
 end
 
-function ENT:Place()
-	local held, x = self.Held, self.Chain.x
-	local ent = held.ent
-	local depth = EvilSnake.Hold(CurTime() - held.at, held.hold)
-	local pos, ang = EvilSnake.HeldPlace(x[1], x[2], self:Radius(), ent:OBBMaxs().z * depth)
-	ent:SetPos(pos)
-	ent:SetAngles(ang)
-end
-
-function ENT:Hold(now, dt)
+function ENT:Hold(now)
 	local held = self.Held
 	if not held then return end
 	local ent = held.ent
@@ -212,14 +207,8 @@ function ENT:Hold(now, dt)
 		return
 	end
 	self.Dirty = true
-	if now - held.at < EvilSnake.HoldLength(held.hold) then
-		self:Place()
-		local dur = ent:SequenceDuration()
-		if dur > 0 then ent:SetCycle((ent:GetCycle() + dt / dur) % 1) end
-		return
-	end
+	if now - held.at < EvilSnake.HoldLength(held.hold) then return end
 	self.Held = nil
-	Evil.Unclaim(ent, self)
 	local v = self.Stomach:Swallow(ent, GULP_AT)
 	self:Chomp(held.prey)
 	hook.Run("EvilSnakeSwallowed", self, v, ent)
@@ -323,7 +312,7 @@ function ENT:Think()
 	local slide = math.Round(c.slide or 0)
 	if slide ~= self:GetSlide() then self:SetSlide(slide) end
 	self:Catch(now)
-	self:Hold(now, dt)
+	self:Hold(now)
 	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c)) then self.Dirty = true end
 	if self.Dirty and now >= (self.NextSend or 0) then
 		self.Dirty = false

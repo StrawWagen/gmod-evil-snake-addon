@@ -56,41 +56,12 @@ function ENT:Snapshot(t, pts, meals, held)
 	while #snaps > KEEP do table.remove(snaps, 1) end
 end
 
-local function DrawHeld(victim)
-	local snake = victim.EvilSnakeHolder
-	if not IsValid(snake) or snake.Victim ~= victim or not snake.Pose then
-		victim:DrawModel()
-		return
-	end
-	local pose, r = snake.Pose, snake:Radius()
-	local pos, ang, f, mouth = EvilSnake.HeldPlace(pose[1], pose[2], r, victim:OBBMaxs().z * snake.HeldDepth)
-	victim:SetRenderOrigin(pos)
-	victim:SetRenderAngles(ang)
-	victim:InvalidateBoneCache()
-	victim:SetupBones()
-	local clip = render.EnableClipping(true)
-	render.PushCustomClipPlane(f, f:Dot(mouth) - r * LIP)
-	victim:DrawModel()
-	render.PopCustomClipPlane()
-	render.EnableClipping(clip)
-	victim:SetRenderOrigin()
-	victim:SetRenderAngles()
-	victim:InvalidateBoneCache()
-end
-
-function ENT:Hold(held)
-	local victim = held and held.ent
-	if not IsValid(victim) then victim = nil end
-	local was = self.Victim
-	if was ~= victim and IsValid(was) and was.EvilSnakeHolder == self then
-		was.RenderOverride = nil
-		was.EvilSnakeHolder = nil
-	end
-	self.Victim = victim
-	if victim then
-		victim.EvilSnakeHolder = self
-		victim.RenderOverride = DrawHeld
-	end
+function ENT:EvilPose(victim)
+	local pose = self.Pose
+	if not pose then return end
+	local r = self:Radius()
+	local pos, ang, f, mouth = EvilSnake.HeldPlace(pose[1], pose[2], r, victim:OBBMaxs().z * (self.HeldDepth or 0))
+	return pos, ang, f, f:Dot(mouth) - r * LIP
 end
 
 local function Sample(snaps, rt)
@@ -148,7 +119,6 @@ function ENT:Slither(now)
 end
 
 function ENT:OnRemove()
-	self:Hold(nil)
 	for _, layer in ipairs(SLITHER) do
 		if self[layer.key] then self[layer.key]:Stop() end
 	end
@@ -185,7 +155,6 @@ function ENT:Think()
 		fattest = math.max(fattest, held.size)
 		self.HeldDepth = depth
 	end
-	self:Hold(held or snaps[#snaps].held)
 	self.Bulges = bulges
 	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest, self:Radius()))
 end
