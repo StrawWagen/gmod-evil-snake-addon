@@ -332,7 +332,7 @@ end
 hook.Add("GUIMousePressed", "EvilSnakeStomach", function(code, aim)
 	if code ~= MOUSE_RIGHT or input.IsButtonDown(MOUSE_LEFT) then return end
 	local hovered = vgui.GetHoveredPanel()
-	if not IsValid(hovered) or not hovered:GetWorldClicker() then return end
+	if not IsValid(hovered) or not hovered:IsWorldClicker() then return end
 	local eye, dir = EyePos(), aim:GetNormalized()
 	if properties.GetHovered(eye, dir) then return end
 	local tr = util.TraceLine({ start = eye, endpos = eye + dir * REACH, filter = LocalPlayer():GetViewEntity() })
