@@ -78,16 +78,16 @@ function ENT:FindPrey(from)
 end
 
 function ENT:Swallow(now)
-	if Setting("hunt_npcs") == 0 or now < (self.SatedUntil or 0) then return end
+	if Setting("hunt_npcs") == 0 then return end
 	local mouth = self:Mouth()
 	local reach = Setting("bite_reach")
 	for _, ent in ipairs(ents.FindInSphere(mouth, reach)) do
 		if Edible(ent) and ent:NearestPoint(mouth):Distance(mouth) <= reach then
 			ent:Remove()
-			self.Prey = nil
-			self.SatedUntil = now + Setting("sated_time")
-			EvilSnake.Chain.Drive(self.Chain, EvilSnake.Chain.HeadYaw(self.Chain), 0)
-			return
+			if ent == self.Prey then
+				self.Prey = nil
+				self.NextBrain = now
+			end
 		end
 	end
 end
@@ -111,11 +111,6 @@ function ENT:Brain(now)
 		end
 	end
 	self.LastHead = Vector(head)
-
-	if now < (self.SatedUntil or 0) then
-		EvilSnake.Chain.Drive(c, yaw, 0)
-		return
-	end
 
 	local prey = self.Prey
 	local range = Setting("sight_range")

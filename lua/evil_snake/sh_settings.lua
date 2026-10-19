@@ -7,8 +7,6 @@ EvilSnake.SETTINGS = {
 		help = "How far away it notices NPCs" },
 	{ name = "bite_reach", default = 24, min = 0, max = 200, decimals = 0, label = "Bite reach",
 		help = "How close its mouth has to get to someone to swallow them" },
-	{ name = "sated_time", default = 4, min = 0, max = 120, decimals = 0, label = "Sated time",
-		help = "Seconds it lies still after a meal" },
 	{ name = "wander", default = 1, min = 0, max = 1, label = "Wanders",
 		help = "Crawls around on its own when there is nothing to hunt" },
 	{ name = "hunt_speed", default = 170, min = 0, max = 1000, decimals = 0, label = "Hunting speed",
