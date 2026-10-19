@@ -170,6 +170,8 @@ function ENT:Think()
 		self.Gape = { fit = fit, open = swell * (1 - shut * shut * (3 - 2 * shut)), dir = up, snap = snap }
 	end
 	self.Bulges = bulges
+	local target = held and held.ent or self:GetPrey()
+	self.Body.look = IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter()) or nil
 	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest, self:Radius()))
 end
 

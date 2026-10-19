@@ -250,6 +250,7 @@ function ENT:Decide(now)
 	local yaw = EvilSnake.Chain.HeadYaw(c)
 	if self.Held then
 		self.Prey, self.LastHead = nil, nil
+		if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
 		EvilSnake.Chain.Drive(c, yaw, 0)
 		return
 	end
@@ -277,6 +278,7 @@ function ENT:Decide(now)
 		prey = self:FindPrey(head)
 	end
 	self.Prey = prey
+	if self:GetPrey() ~= (prey or NULL) then self:SetPrey(prey or NULL) end
 
 	if prey and now >= (self.DetourUntil or 0) then
 		local to = prey:WorldSpaceCenter() - head

@@ -20,17 +20,14 @@ local SIDE_TEETH = 7
 local FRONT_TEETH = 11
 local TOOTH = 0.24
 local TOOTH_W = 0.06
-local EYE = 0.13
-local EYE_AT = 0.78
-local EYE_RINGS = 5
-local EYE_SIDES = 8
+local STALK_AT = 0.7
+local STALK_OUT = 0.8
 local IDLE = 0.04
 local SNAP = 0.6
 local CLAMP = 0.6
 local BITE_AT = 0.55
 local THROAT = { 120, 28, 38 }
 local BONE = { 235, 228, 205 }
-local EYE_COL = { 14, 12, 12 }
 local UP = Vector(0, 0, 1)
 local SIDE = Vector(1, 0, 0)
 
@@ -199,35 +196,26 @@ local function Teeth(W, Lw, shift)
 	mesh.End()
 end
 
-local function Eyes(W, Lw)
-	local a, b, _, wide = Shape(EYE_AT, W)
-	local r = EYE * W
-	mesh.Begin(MATERIAL_QUADS, 2 * EYE_RINGS * EYE_SIDES)
+local function Stalks(W, Lw)
+	local a, b, n, wide = Shape(STALK_AT, W)
+	local list = {}
 	for side = -1, 1, 2 do
-		local y0 = side * a * 0.97
-		local x0, z0 = EYE_AT * Lw - Sweep(y0, W, wide), b * 0.35
-		local cx, cy, cz = Place(x0, y0, z0)
-		local function Corner(i, q)
-			local lat = (i / EYE_RINGS - 0.5) * math.pi
-			local lon = q / EYE_SIDES * math.pi * 2
-			local x, y, z = Place(x0 + r * cos(lat) * cos(lon), y0 + r * cos(lat) * sin(lon), z0 + r * sin(lat))
-			local l = Lit(x - cx, y - cy, z - cz)
-			scratch:SetUnpacked(x, y, z)
-			mesh.Position(scratch)
-			mesh.TexCoord(0, 0, 0)
-			mesh.Color(min(255, EYE_COL[1] * l), min(255, EYE_COL[2] * l), min(255, EYE_COL[3] * l), 255)
-			mesh.AdvanceVertex()
-		end
-		for i = 0, EYE_RINGS - 1 do
-			for q = 0, EYE_SIDES - 1 do
-				Corner(i, q)
-				Corner(i, q + 1)
-				Corner(i + 1, q + 1)
-				Corner(i + 1, q)
-			end
-		end
+		local y = side * a * STALK_OUT
+		local x = STALK_AT * Lw - Sweep(y, W, wide)
+		local z = b * (1 - STALK_OUT ^ n) ^ (1 / n) - W * 0.03
+		local bx, by, bz = Place(x, y, z)
+		local tx2, ty2, tz2 = Place(x, y, z + 1)
+		local sx, sy, sz = Place(x, y + side, z)
+		local base = Vector(bx, by, bz)
+		local up = Vector(tx2 - bx, ty2 - by, tz2 - bz)
+		up:Normalize()
+		local out = Vector(sx - bx, sy - by, sz - bz)
+		out:Normalize()
+		up = up + out * 0.35
+		up:Normalize()
+		list[#list + 1] = { base = base, up = up, side = out }
 	end
-	mesh.End()
+	return list
 end
 
 function Head.Gape(mouth, W)
@@ -236,7 +224,7 @@ function Head.Gape(mouth, W)
 	return Lerp(mouth.open, IDLE, hold) + SNAP * (mouth.snap or 0)
 end
 
-function Head.Draw(cube, p, dir, W, mouth, cr, cg, cb)
+function Head.Draw(cube, p, dir, W, mouth, cr, cg, cb, eyes, look)
 	light = cube
 	local right = dir:Cross(UP)
 	if right:LengthSqr() < 1e-4 then right = dir:Cross(SIDE) end
@@ -254,6 +242,8 @@ function Head.Draw(cube, p, dir, W, mouth, cr, cg, cb)
 		Shade(jaw)
 		Shell()
 		Teeth(W, Lw, jaw == 1 and 0 or 0.5)
-		if jaw == 1 then Eyes(W, Lw) end
+		if jaw == 1 and eyes then
+			EvilSnake.Eyes.Draw(eyes, cube, Stalks(W, Lw), { p = p, f = dir, r = right, u = up }, W, look, cr, cg, cb)
+		end
 	end
 end

@@ -20,7 +20,7 @@ local SPAN = 1.3
 local SWELL_IN = 1
 
 function Body.New()
-	return { light = {}, lit = 0 }
+	return { light = {}, lit = 0, eyes = {} }
 end
 
 function Body.Bounds(pts, fattest, R)
@@ -199,5 +199,5 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 		end
 		mesh.End()
 	end
-	EvilSnake.Head.Draw(body.light, headP, headDir, headW, mouth, cr, cg, cb)
+	EvilSnake.Head.Draw(body.light, headP, headDir, headW, mouth, cr, cg, cb, body.eyes, body.look)
 end
