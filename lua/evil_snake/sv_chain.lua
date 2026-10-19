@@ -24,6 +24,9 @@ local AIM = 3
 local SPIN = 6
 local PACE = 4
 local CRAWL = 1
+local MAX_BEND = 1.4
+
+local folds = {}
 
 function Chain.New(joints, filter)
 	local c = {
@@ -345,7 +348,11 @@ local function Tick(c)
 	local x, old, p, cn, cd = c.x, c.old, c.p, c.cn, c.cd
 	local n = #x
 	local link = Chain.Link(c)
-	local fold = link * Setting("bend")
+	local curl = Setting("curl")
+	for i = 1, n - 2 do
+		local bend = math.min(link / math.max(curl * c.hull[i + 1] / HULL, 1e-3), MAX_BEND)
+		folds[i] = 2 * link * math.cos(bend * 0.5)
+	end
 	local gravity = Setting("gravity")
 	local fall = Vector(0, 0, -gravity * DT * DT)
 	for i = 1, n do p[i] = x[i] + (x[i] - old[i]) * DAMP + fall end
@@ -375,6 +382,7 @@ local function Tick(c)
 		for i = 1, n - 2 do
 			local d = p[i + 2] - p[i]
 			local len = d:Length()
+			local fold = folds[i]
 			if len < fold and len > 1e-4 then
 				local fix = d * ((len - fold) / len * 0.5)
 				p[i], p[i + 2] = p[i] + fix, p[i + 2] - fix
