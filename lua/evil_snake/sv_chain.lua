@@ -20,6 +20,10 @@ local UP = Vector(0, 0, 1)
 local SELF_ARC = 1.6
 local SELF_MARGIN = 8
 local SELF_STIFF = 0.8
+local AIM = 3
+local SPIN = 6
+local PACE = 4
+local CRAWL = 1
 
 function Chain.New(joints, filter)
 	local c = {
@@ -70,7 +74,7 @@ function Chain.HeadYaw(c)
 end
 
 function Chain.Drive(c, yaw, speed)
-	c.goal, c.speed = yaw, speed
+	c.goal, c.want = yaw, speed
 	if speed > 0 then c.awake, c.still = true, 0 end
 end
 
@@ -78,6 +82,18 @@ function Chain.Swell(c, girth)
 	c.girth = girth
 	Size(c)
 	c.awake, c.still = true, 0
+end
+
+local function Reseed(c)
+	local x, trail, arcs = c.x, {}, {}
+	local n = #x
+	local arc = 0
+	for k = 1, n do
+		local p = x[n - k + 1]
+		if k > 1 then arc = arc + p:Distance(trail[k - 1]) end
+		trail[k], arcs[k] = Vector(p), arc
+	end
+	c.trail, c.arcs = trail, arcs
 end
 
 local function Resize(c, count)
@@ -94,25 +110,14 @@ local function Resize(c, count)
 		x[n + 1], old[n + 1] = Vector(tr.HitPos), Vector(tr.HitPos)
 	end
 	Size(c)
-	c.awake, c.still, c.driving = true, 0, false
+	Reseed(c)
+	c.awake, c.still = true, 0
 end
 
 function Chain.Fit(c, length)
 	local count = math.max(1, math.Round(length))
 	c.stretch = length / count
 	if #c.x ~= count + 1 then Resize(c, count) end
-end
-
-local function Reseed(c)
-	local x, trail, arcs = c.x, {}, {}
-	local n = #x
-	local arc = 0
-	for k = 1, n do
-		local p = x[n - k + 1]
-		if k > 1 then arc = arc + p:Distance(trail[k - 1]) end
-		trail[k], arcs[k] = Vector(p), arc
-	end
-	c.trail, c.arcs = trail, arcs
 end
 
 local function Record(c, head)
@@ -220,14 +225,18 @@ local function Collide(c, i, from, to, along, gravity)
 end
 
 local function Steer(c)
+	local sway = Setting("sway")
 	if not c.driving then
-		c.driving, c.yaw = true, Chain.HeadYaw(c)
+		c.driving, c.spin = true, 0
+		c.yaw = Chain.HeadYaw(c) - sway * math.sin(c.phase)
 		Reseed(c)
 	end
-	local turn = Setting("turn_rate") * DT
-	c.yaw = c.yaw + math.Clamp(math.AngleDifference(c.goal, c.yaw), -turn, turn)
+	local turn = Setting("turn_rate")
+	local want = math.Clamp(math.AngleDifference(c.goal, c.yaw) * AIM, -turn, turn)
+	c.spin = c.spin + (want - c.spin) * math.min(1, SPIN * DT)
+	c.yaw = c.yaw + c.spin * DT
 	c.phase = (c.phase + c.speed * DT / Setting("wavelength") * math.pi * 2) % (math.pi * 2)
-	local heading = math.rad(c.yaw + Setting("sway") * math.sin(c.phase))
+	local heading = math.rad(c.yaw + sway * math.sin(c.phase))
 	return Vector(math.cos(heading), math.sin(heading), 0) * (c.speed * DT)
 end
 
@@ -340,6 +349,9 @@ local function Tick(c)
 	local gravity = Setting("gravity")
 	local fall = Vector(0, 0, -gravity * DT * DT)
 	for i = 1, n do p[i] = x[i] + (x[i] - old[i]) * DAMP + fall end
+	local want = c.want or 0
+	c.speed = c.speed + (want - c.speed) * math.min(1, PACE * DT)
+	if want <= 0 and c.speed < CRAWL then c.speed = 0 end
 	if c.speed > 0 then
 		local step = Steer(c)
 		if cn[1] then p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * DAMP) + fall end
