@@ -92,9 +92,9 @@ function ENT:SendBody(ply)
 	if ply then net.Send(ply) else net.Broadcast() end
 end
 
-local function Edible(ent)
+local function Edible(ent, snake)
 	return IsValid(ent) and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
-		and not ent.EvilSnakeHeld and not ent.EvilSnakeKnocked
+		and Evil.Claimable(ent, snake)
 end
 
 function ENT:Mouth()
@@ -105,7 +105,7 @@ end
 function ENT:FindPrey(from)
 	local best, bestDist = nil, Setting("sight_range") ^ 2
 	for _, ent in ipairs(ents.FindInSphere(from, Setting("sight_range"))) do
-		if Edible(ent) then
+		if Edible(ent, self) then
 			local d = from:DistToSqr(ent:WorldSpaceCenter())
 			if d < bestDist then best, bestDist = ent, d end
 		end
@@ -164,19 +164,10 @@ function ENT:Chomp(size)
 end
 
 function ENT:Grab(ent, now)
+	if not Evil.Claim(ent, self) then return end
+	Evil.Freeze(ent)
 	local size = EvilSnake.PreySize(ent)
-	local wep = ent.GetActiveWeapon and ent:GetActiveWeapon()
-	self.Held = {
-		ent = ent, at = now, hold = Setting("hold_time"), size = EvilSnake.BulgeSize(size), prey = size,
-		move = ent:GetMoveType(), weapon = IsValid(wep) and wep or nil,
-	}
-	ent.EvilSnakeHeld = self
-	ent:AddEFlags(EFL_NO_THINK_FUNCTION)
-	ent:AddFlags(FL_NOTARGET)
-	ent:SetMoveType(MOVETYPE_NONE)
-	ent:SetNotSolid(true)
-	ent:DrawShadow(false)
-	if IsValid(wep) then wep:SetNoDraw(true) end
+	self.Held = { ent = ent, at = now, hold = Setting("hold_time"), size = EvilSnake.BulgeSize(size), prey = size }
 	local seq = ACT_BARNACLE_PULL and ent:SelectWeightedSequence(ACT_BARNACLE_PULL)
 	if seq and seq >= 0 then
 		ent:ResetSequence(seq)
@@ -193,15 +184,10 @@ function ENT:Release()
 	local held = self.Held
 	self.Held = nil
 	self.Dirty = true
-	if not held or not IsValid(held.ent) then return end
+	if not held or Evil.Owner(held.ent) ~= self then return end
 	local ent = held.ent
-	ent.EvilSnakeHeld = nil
-	ent:RemoveEFlags(EFL_NO_THINK_FUNCTION)
-	ent:RemoveFlags(FL_NOTARGET)
-	ent:SetMoveType(held.move)
-	ent:SetNotSolid(false)
-	ent:DrawShadow(true)
-	if IsValid(held.weapon) then held.weapon:SetNoDraw(false) end
+	Evil.Unclaim(ent, self)
+	Evil.Thaw(ent)
 	ent:SetPos(self:Mouth())
 	ent:SetAngles(Angle(0, ent:GetAngles().y, 0))
 	hook.Run("EvilSnakeReleased", self, ent)
@@ -220,7 +206,7 @@ function ENT:Hold(now, dt)
 	local held = self.Held
 	if not held then return end
 	local ent = held.ent
-	if not IsValid(ent) then
+	if Evil.Owner(ent) ~= self then
 		self.Held = nil
 		self.Dirty = true
 		return
@@ -233,7 +219,7 @@ function ENT:Hold(now, dt)
 		return
 	end
 	self.Held = nil
-	ent.EvilSnakeHeld = nil
+	Evil.Unclaim(ent, self)
 	local v = self.Stomach:Swallow(ent, GULP_AT)
 	self:Chomp(held.prey)
 	hook.Run("EvilSnakeSwallowed", self, v, ent)
@@ -262,7 +248,7 @@ function ENT:Catch(now)
 	local travel = from:Distance(mouth)
 	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
 	for _, ent in ipairs(ents.FindInSphere((from + mouth) * 0.5, reach + travel * 0.5)) do
-		if Edible(ent) and Reaches(ent, from, mouth, steps, reach) then
+		if Edible(ent, self) and Reaches(ent, from, mouth, steps, reach) then
 			self:Grab(ent, now)
 			return
 		end
@@ -298,7 +284,7 @@ function ENT:Decide(now)
 	local range = Setting("sight_range")
 	if Setting("hunt_npcs") == 0 then
 		prey = nil
-	elseif not Edible(prey) or head:Distance(prey:WorldSpaceCenter()) > range * LOSE then
+	elseif not Edible(prey, self) or head:Distance(prey:WorldSpaceCenter()) > range * LOSE then
 		prey = self:FindPrey(head)
 	end
 	self.Prey = prey
