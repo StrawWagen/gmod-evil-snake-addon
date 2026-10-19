@@ -19,7 +19,6 @@ local KEEP = 8
 local DRIFT = 0.05
 local FIT = 0.75
 local SHUT = { 0.9, 1.15 }
-local GULP = 1
 
 local min = math.min
 
@@ -31,7 +30,7 @@ net.Receive("EvilSnakeBody", function()
 	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat() } end
 	local held
 	if net.ReadBool() then
-		held = { ent = net.ReadEntity(), at = net.ReadDouble(), hold = net.ReadFloat(), size = net.ReadFloat() }
+		held = { ent = net.ReadEntity(), at = net.ReadDouble(), hold = net.ReadFloat(), pace = net.ReadFloat(), size = net.ReadFloat() }
 	end
 	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals, held) end
 end)
@@ -158,14 +157,8 @@ function ENT:Think()
 	local held = snap.held
 	self.HeldDepth = 0
 	self.Gape = nil
-	for _, b in ipairs(bulges) do
-		if b.at < GULP then
-			self.Gape = { fit = 0, open = 0, snap = math.sin(math.pi * b.at / GULP) }
-			break
-		end
-	end
 	if held then
-		local depth, at, swell = EvilSnake.Hold(rt - held.at, held.hold)
+		local depth, at, swell = EvilSnake.Hold((rt - held.at) * held.pace, held.hold)
 		local r = self:Radius()
 		local fit = Fit(held.ent, r)
 		local snug = EvilSnake.Body.Snug(fit, EvilSnake.HeadRadius(r))

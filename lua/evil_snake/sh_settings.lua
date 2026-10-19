@@ -10,7 +10,7 @@ EvilSnake.SETTINGS = {
 	{ name = "hold_time", default = 3, min = 0, max = 15, decimals = 1, label = "Swallow time",
 		help = "Seconds it holds someone half in its mouth before pulling them down" },
 	{ name = "instant_npcs", default = 1, min = 0, max = 1, label = "Instantly swallow NPCs",
-		help = "NPCs go straight down instead of being held in its mouth first" },
+		help = "NPCs get pulled down in a blink instead of being held in its mouth first" },
 	{ name = "bulge_size", default = 1.8, min = 1, max = 4, decimals = 2, label = "Bulge size",
 		help = "How fat a swallowed victim makes the body, in body thicknesses. Bigger victims bulge more" },
 	{ name = "bulge_speed", default = 80, min = 5, max = 1000, decimals = 0, label = "Bulge speed",

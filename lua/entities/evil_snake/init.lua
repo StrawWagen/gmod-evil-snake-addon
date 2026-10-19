@@ -25,6 +25,7 @@ local GULP_DELAY = 0.35
 local GULP_AT = 1
 local EAT_LEVEL = 80
 local MIN_REACH = 4
+local FAST = 4
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -87,6 +88,7 @@ function ENT:SendBody(ply)
 		net.WriteEntity(held.ent)
 		net.WriteDouble(held.at)
 		net.WriteFloat(held.hold)
+		net.WriteFloat(held.pace)
 		net.WriteFloat(held.size)
 	end
 	if ply then net.Send(ply) else net.Broadcast() end
@@ -169,28 +171,19 @@ function ENT:EvilPose(victim)
 	local held = self.Held
 	if not held or held.ent ~= victim then return end
 	local x = self.Chain.x
-	local depth = EvilSnake.Hold(CurTime() - held.at, held.hold)
+	local depth = EvilSnake.Hold((CurTime() - held.at) * held.pace, held.hold)
 	local head, neck = EvilSnake.HeadPoints(x[1], x[2], self:Radius())
 	local pos, ang = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * depth)
 	return pos, ang
 end
 
-function ENT:Gulp(ent, now)
-	local size = EvilSnake.PreySize(ent)
-	self.Prey = nil
-	self:Bite(size)
-	local v = self.Stomach:Swallow(ent, 0)
-	self:Chomp(size)
-	self.Dirty = true
-	hook.Run("EvilSnakeSwallowed", self, v, ent)
-	ent:Remove()
-	self.NextDecide = now
-end
-
 function ENT:Grab(ent, now)
-	if not ent:IsPlayer() and Setting("instant_npcs") ~= 0 then return self:Gulp(ent, now) end
 	local size = EvilSnake.PreySize(ent)
-	self.Held = { ent = ent, at = now, hold = Setting("hold_time"), size = EvilSnake.BulgeSize(size), prey = size }
+	local fast = not ent:IsPlayer() and Setting("instant_npcs") ~= 0
+	self.Held = {
+		ent = ent, at = now, hold = fast and 0 or Setting("hold_time"), pace = fast and FAST or 1,
+		size = EvilSnake.BulgeSize(size), prey = size,
+	}
 	if not Evil.Pose(ent, self, { act = ACT_BARNACLE_PULL }) then
 		self.Held = nil
 		return
@@ -223,7 +216,7 @@ function ENT:Hold(now)
 		return
 	end
 	self.Dirty = true
-	if now - held.at < EvilSnake.HoldLength(held.hold) then return end
+	if (now - held.at) * held.pace < EvilSnake.HoldLength(held.hold) then return end
 	self.Held = nil
 	local v = self.Stomach:Swallow(ent, GULP_AT)
 	self:Chomp(held.prey)
