@@ -32,16 +32,22 @@ net.Receive("EvilSnakeBody", function()
 	if net.ReadBool() then
 		held = { ent = net.ReadEntity(), at = net.ReadDouble(), hold = net.ReadFloat(), pace = net.ReadFloat(), size = net.ReadFloat() }
 	end
-	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals, held) end
+	local tongue = { state = net.ReadUInt(2) }
+	if tongue.state ~= EvilSnake.TONGUE_IN then
+		tongue.tip = net.ReadVector()
+		tongue.ent = net.ReadEntity()
+	end
+	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals, held, tongue) end
 end)
 
 function ENT:Initialize()
 	self.Body = EvilSnake.Body.New()
+	self.Tongue = EvilSnake.Tongue.New()
 	self.Bulges = {}
 	self.Snaps = self.Snaps or {}
 end
 
-function ENT:Snapshot(t, pts, meals, held)
+function ENT:Snapshot(t, pts, meals, held, tongue)
 	local snaps = self.Snaps or {}
 	self.Snaps = snaps
 	local d, off = UnPredictedCurTime() - t, self.Offset
@@ -50,10 +56,12 @@ function ENT:Snapshot(t, pts, meals, held)
 	if last then
 		if t <= last.t then return end
 		if t - last.t > GAP then
-			snaps[#snaps + 1] = { t = t - EvilSnake.SEND, pts = last.pts, meals = last.meals, fed = last.fed, held = last.held }
+			snaps[#snaps + 1] = {
+				t = t - EvilSnake.SEND, pts = last.pts, meals = last.meals, fed = last.fed, held = last.held, tongue = last.tongue,
+			}
 		end
 	end
-	snaps[#snaps + 1] = { t = t, pts = pts, meals = meals, fed = t, held = held }
+	snaps[#snaps + 1] = { t = t, pts = pts, meals = meals, fed = t, held = held, tongue = tongue }
 	while #snaps > KEEP do table.remove(snaps, 1) end
 end
 
@@ -73,8 +81,8 @@ end
 
 local function Sample(snaps, rt)
 	local n = #snaps
-	if rt <= snaps[1].t then return snaps[1].pts, snaps[1] end
-	if rt >= snaps[n].t then return snaps[n].pts, snaps[n] end
+	if rt <= snaps[1].t then return snaps[1].pts, snaps[1], snaps[1], 0 end
+	if rt >= snaps[n].t then return snaps[n].pts, snaps[n], snaps[n], 0 end
 	local k = n - 1
 	while snaps[k].t > rt do k = k - 1 end
 	local a, b = snaps[k], snaps[k + 1]
@@ -91,7 +99,7 @@ local function Sample(snaps, rt)
 		local pa, pb = A[min(i, na)], B[i]
 		pose[i] = pa * h00 + pb * h01 + (pb - P[min(i, np)]) * h10 + (Q[min(i, nq)] - pa) * h11
 	end
-	return pose, a
+	return pose, a, b, u
 end
 
 function ENT:Slither(now)
@@ -145,7 +153,7 @@ function ENT:Think()
 		return
 	end
 	local rt = math.min(UnPredictedCurTime() - self.Offset - DELAY, snaps[#snaps].t)
-	local pose, snap = Sample(snaps, rt)
+	local pose, snap, later, u = Sample(snaps, rt)
 	self.Pose = pose
 	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
 	local ahead = math.max(rt - snap.fed, 0) * EvilSnake.Setting("bulge_speed") / self.Link
@@ -154,12 +162,15 @@ function ENT:Think()
 		bulges[i] = { at = math.min(m.at + ahead, #pose - 1), size = m.size }
 		fattest = math.max(fattest, m.size)
 	end
+	local tongue = self.Tongue
+	EvilSnake.Tongue.Update(tongue, snap.tongue, later.tongue, u, now - (self.LastTongue or now))
+	self.LastTongue = now
+	local r = self:Radius()
 	local held = snap.held
 	self.HeldDepth = 0
 	self.Gape = nil
 	if held then
 		local depth, at, swell = EvilSnake.Hold((rt - held.at) * held.pace, held.hold)
-		local r = self:Radius()
 		local fit = Fit(held.ent, r)
 		local snug = EvilSnake.Body.Snug(fit, EvilSnake.HeadRadius(r))
 		bulges[#bulges + 1] = { at = at, size = Lerp(at, snug, held.size), swell = swell }
@@ -169,13 +180,20 @@ function ENT:Think()
 		local _, up = EvilSnake.Gape(EvilSnake.HeadPoints(pose[1], pose[2], r))
 		local snap = swell < 1 and math.sin(math.pi * swell) or 0
 		self.Gape = { fit = fit, open = swell * (1 - shut * shut * (3 - 2 * shut)), dir = up, snap = snap }
+	else
+		local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], r)
+		self.Gape = EvilSnake.Tongue.Gape(tongue, head, neck, EvilSnake.HeadRadius(r))
 	end
 	self.Bulges = bulges
 	local target = held and held.ent or self:GetPrey()
-	self.Body.look = IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter()) or nil
-	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest, self:Radius()))
+	self.Body.look = not held and EvilSnake.Tongue.Look(tongue)
+		or IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter()) or nil
+	local mins, maxs = EvilSnake.Body.Bounds(pose, fattest, r)
+	self:SetRenderBoundsWS(EvilSnake.Tongue.Bounds(tongue, mins, maxs))
 end
 
 function ENT:Draw()
-	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius(), self.Link, self.Gape) end
+	if not self.Pose then return end
+	EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius(), self.Link, self.Gape)
+	EvilSnake.Tongue.Draw(self.Tongue, self.Body, RealTime())
 end

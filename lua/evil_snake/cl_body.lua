@@ -220,5 +220,6 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 		end
 		mesh.End()
 	end
+	body.head, body.dir, body.W = headP, headDir, headW
 	EvilSnake.Head.Draw(body.light, headP, headDir, headW, mouth, cr, cg, cb, body.eyes, body.look)
 end
