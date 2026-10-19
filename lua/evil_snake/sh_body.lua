@@ -66,14 +66,19 @@ function EvilSnake.Hold(t, hold)
 	return Lerp(Smooth(math.min(u / PULL_DEEP, 1)), HALF + CREEP, DEEP), Smooth(u), 1
 end
 
-function EvilSnake.HeldPlace(head, neck, r, depth)
+function EvilSnake.Gape(head, neck)
 	local f = head - neck
 	f:Normalize()
-	local mouth = head + f * r
 	local up = f + UP * LIFT
 	up:Normalize()
+	return f, up
+end
+
+function EvilSnake.HeldPlace(head, neck, r, depth)
+	local f, up = EvilSnake.Gape(head, neck)
+	local mouth = head + up * r
 	local fwd = UP - up * UP:Dot(up)
 	if fwd:LengthSqr() < 1e-4 then fwd = -f end
 	fwd:Normalize()
-	return mouth - up * depth, fwd:AngleEx(up), f, mouth
+	return mouth - up * depth, fwd:AngleEx(up), up, mouth
 end

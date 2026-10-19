@@ -7,7 +7,15 @@ local sqrt, sin, cos, max, min, abs = math.sqrt, math.sin, math.cos, math.max, m
 
 local SUB = 4
 local SIDES = 20
-local CAP = 6
+local OUTER = 4
+local ROLL = 6
+local BOWL = 5
+local LIP = 0.18
+local WALL = 0.1
+local IDLE = 0.3
+local GULLET = 0.7
+local THROAT = { 120, 28, 38 }
+local DARK = 0.2
 local PAD = 4
 local RELIGHT = 3
 local BATCH = 100
@@ -40,21 +48,57 @@ local function Relight(body, pts)
 end
 
 local cx, cy, cz, tx, ty, tz, rw, rnr, rax, rlo = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+local rr, rg, rb = {}, {}, {}
 local count = 0
+local cr, cg, cb = 0, 0, 0
 
-local function Ring(x, y, z, dx, dy, dz, w, nr, ax, joint)
+local function Ring(x, y, z, dx, dy, dz, w, nr, ax, joint, r, g, b)
 	count = count + 1
 	cx[count], cy[count], cz[count] = x, y, z
 	tx[count], ty[count], tz[count] = dx, dy, dz
 	rw[count], rnr[count], rax[count], rlo[count] = w, nr, ax, (joint - 1) * 6
+	rr[count], rg[count], rb[count] = r or cr, g or cg, b or cb
 end
 
-local function Cap(p, dx, dy, dz, joint, outward, R)
-	for k = 1, CAP do
-		local a = (outward and k or CAP + 1 - k) / CAP * math.pi * 0.5
-		local s, c = sin(a), cos(a)
-		local o = outward and s * R or -s * R
-		Ring(p.x + dx * o, p.y + dy * o, p.z + dz * o, dx, dy, dz, c * R, c, outward and s or -s, joint)
+local function Along(p, d, z, rho, nr, nf, r, g, b)
+	Ring(p.x + d.x * z, p.y + d.y * z, p.z + d.z * z, -d.x, -d.y, -d.z, rho, nr, -nf, 1, r, g, b)
+end
+
+local function Tint(t, shade)
+	return Lerp(t, cr, THROAT[1]) * shade, Lerp(t, cg, THROAT[2]) * shade, Lerp(t, cb, THROAT[3]) * shade
+end
+
+function Body.Snug(fit, R)
+	return max(1, fit / R + 2 * LIP + WALL)
+end
+
+local function Mouth(p, back, W, R, mouth)
+	local fwd = -back
+	local open = mouth and mouth.open or 0
+	local dir = mouth and mouth.dir and LerpVector(open, fwd, mouth.dir):GetNormalized() or fwd
+	local lr = R * LIP
+	local ap = Lerp(open, W * IDLE, mouth and mouth.fit or 0)
+	ap = math.Clamp(ap, R * 0.05, max(W - 2 * lr - R * WALL, R * 0.05))
+	local inner = W - lr
+	local am = math.acos(math.Clamp((ap + lr) / inner, 0, 1))
+	local zc, rc = inner * sin(am), inner * cos(am)
+	local deep = W * GULLET
+	for k = 0, BOWL - 1 do
+		local phi = (1 - k / BOWL) * math.pi * 0.5
+		local c, s = cos(phi), sin(phi)
+		local nr, nf = -c * deep, s * ap
+		local nl = sqrt(nr * nr + nf * nf)
+		Along(p, dir, zc - deep * s, ap * c, nr / nl, nf / nl, Tint(1, Lerp(c, DARK, 0.7)))
+	end
+	for k = 0, ROLL do
+		local th = math.pi - (math.pi - am) * k / ROLL
+		local c, s = cos(th), sin(th)
+		Along(p, dir, zc + lr * s, rc + lr * c, c, s, Tint(math.Clamp(-c * 2, 0, 1), Lerp(math.Clamp(-c, 0, 1), 1, 0.7)))
+	end
+	for k = 1, OUTER do
+		local a = am * (1 - k / (OUTER + 1))
+		local c, s = cos(a), sin(a)
+		Along(p, LerpVector(a / am, fwd, dir):GetNormalized(), W * s, W * c, c, s)
 	end
 end
 
@@ -83,7 +127,7 @@ local function Widths(m, n, R, bulges, link)
 	for j = 1, m do widths[j] = widths[j] * swells[j] end
 end
 
-local function Rings(pts, bulges, R, link)
+local function Rings(pts, bulges, R, link, mouth)
 	count = 0
 	local n = #pts
 	local samples = {}
@@ -95,7 +139,7 @@ local function Rings(pts, bulges, R, link)
 	local m = #samples
 	local first = (samples[2] - samples[1]):GetNormalized()
 	Widths(m, n - 1, R, bulges, link)
-	Cap(samples[1], first.x, first.y, first.z, 1, false, widths[1])
+	Mouth(samples[1], first, widths[1], R, mouth)
 	for j = 1, m do
 		local a, b = max(j - 1, 1), min(j + 1, m)
 		local d = samples[b] - samples[a]
@@ -110,24 +154,22 @@ local function Rings(pts, bulges, R, link)
 	end
 end
 
-local vx, vy, vz, vl = {}, {}, {}, {}
+local vx, vy, vz, vr, vg, vb = {}, {}, {}, {}, {}, {}
 local scratch = Vector()
-local cr, cg, cb = 0, 0, 0
 
 local function Vert(i)
 	scratch:SetUnpacked(vx[i], vy[i], vz[i])
 	mesh.Position(scratch)
 	mesh.TexCoord(0, 0, 0)
-	local l = vl[i]
-	mesh.Color(min(255, cr * l), min(255, cg * l), min(255, cb * l), 255)
+	mesh.Color(vr[i], vg[i], vb[i], 255)
 	mesh.AdvanceVertex()
 end
 
-function Body.Draw(body, pts, bulges, R, link)
+function Body.Draw(body, pts, bulges, R, link, mouth)
 	if #pts < 2 then return end
 	Relight(body, pts)
 	cr, cg, cb = EvilSnake.Color()
-	Rings(pts, bulges or {}, R, link)
+	Rings(pts, bulges or {}, R, link, mouth)
 	local tr = EvilSnake.Trig(SIDES)
 	local light = body.light
 	local nx, ny, nz = 0, 0, 1
@@ -144,12 +186,14 @@ function Body.Draw(body, pts, bulges, R, link)
 		local bx, by, bz = ay * nz - az * ny, az * nx - ax * nz, ax * ny - ay * nx
 		local w, r, k = rw[j], rnr[j], rax[j]
 		local px, py, pz, o = cx[j], cy[j], cz[j], rlo[j]
+		local r0, g0, b0 = rr[j], rg[j], rb[j]
 		for q = 0, SIDES - 1 do
 			local cs, sn = tr.c[q], tr.s[q]
 			local dx, dy, dz = nx * cs + bx * sn, ny * cs + by * sn, nz * cs + bz * sn
 			local i = (j - 1) * SIDES + q + 1
 			vx[i], vy[i], vz[i] = px + dx * w, py + dy * w, pz + dz * w
-			vl[i] = Bright(light, o, dx * r + ax * k, dy * r + ay * k, dz * r + az * k)
+			local l = Bright(light, o, dx * r + ax * k, dy * r + ay * k, dz * r + az * k)
+			vr[i], vg[i], vb[i] = min(255, r0 * l), min(255, g0 * l), min(255, b0 * l)
 		end
 	end
 

@@ -18,6 +18,8 @@ local GAP = EvilSnake.SEND * 3
 local KEEP = 8
 local DRIFT = 0.05
 local LIP = 0.5
+local FIT = 0.65
+local SHUT = { 0.9, 1.15 }
 
 local min = math.min
 
@@ -62,6 +64,12 @@ function ENT:EvilPose(victim)
 	local r = self:Radius()
 	local pos, ang, f, mouth = EvilSnake.HeldPlace(pose[1], pose[2], r, victim:OBBMaxs().z * (self.HeldDepth or 0))
 	return pos, ang, f, f:Dot(mouth) - r * LIP
+end
+
+local function Fit(ent, r)
+	if not IsValid(ent) then return r end
+	local lo, hi = ent:OBBMins(), ent:OBBMaxs()
+	return math.max(hi.x - lo.x, hi.y - lo.y) * 0.5 * FIT
 end
 
 local function Sample(snaps, rt)
@@ -149,16 +157,23 @@ function ENT:Think()
 	end
 	local held = snap.held
 	self.HeldDepth = 0
+	self.Gape = nil
 	if held then
 		local depth, at, swell = EvilSnake.Hold(rt - held.at, held.hold)
-		bulges[#bulges + 1] = { at = at, size = held.size, swell = swell }
-		fattest = math.max(fattest, held.size)
+		local r = self:Radius()
+		local fit = Fit(held.ent, r)
+		local snug = EvilSnake.Body.Snug(fit, r)
+		bulges[#bulges + 1] = { at = at, size = Lerp(at, snug, held.size), swell = swell }
+		fattest = math.max(fattest, held.size, snug)
 		self.HeldDepth = depth
+		local shut = math.Clamp((depth - SHUT[1]) / (SHUT[2] - SHUT[1]), 0, 1)
+		local _, up = EvilSnake.Gape(pose[1], pose[2])
+		self.Gape = { fit = fit, open = swell * (1 - shut * shut * (3 - 2 * shut)), dir = up }
 	end
 	self.Bulges = bulges
 	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest, self:Radius()))
 end
 
 function ENT:Draw()
-	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius(), self.Link) end
+	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius(), self.Link, self.Gape) end
 end
