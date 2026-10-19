@@ -241,7 +241,7 @@ function Head.Draw(cube, p, dir, W, mouth, cr, cg, cb, eyes, look)
 		Jaw(W, Lw, cr, cg, cb)
 		Shade(jaw)
 		Shell()
-		Teeth(W, Lw, jaw == 1 and 0 or 0.5)
+		if EvilSnake.Setting("teeth") ~= 0 then Teeth(W, Lw, jaw == 1 and 0 or 0.5) end
 		if jaw == 1 and eyes then
 			EvilSnake.Eyes.Draw(eyes, cube, Stalks(W, Lw), { p = p, f = dir, r = right, u = up }, W, look, cr, cg, cb)
 		end
