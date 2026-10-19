@@ -16,14 +16,16 @@ local DROP = 96
 local SUB = 4
 local SIDES = 18
 local RADIUS = 3.2
-local HEAD_LENGTH = 8
-local HEAD_WIDTH = 1.3
-local SNOUT = 0.7
+local HEAD_LENGTH = 11
+local MOUTH = 1.45
+local LIP = 1.2
+local LIP_IN = 0.8
 local NECK = 0.8
 local NOSE = 2
+local PAD = 16
 local TAIL_START = 0.45
 local FLAT = 0.8
-local HEAD_FLAT = 0.6
+local HEAD_FLAT = 0.85
 local BELLY_FLAT = 0.5
 local FINE = 0.6
 local COARSE = 2
@@ -32,11 +34,12 @@ local BLOTCH = Vector(20, 22, 15)
 local BELLY = Vector(148, 136, 92)
 local BLOTCH_SPACING = 9
 local CHEVRON = 2.2
-local EYE_AT = 0.4
+local EYE_AT = 0.62
 local EYE_OUT = 0.8
 local EYE_UP = 0.55
 local EYE_RADIUS = 0.75
 local EYE_COLOR = Color(10, 8, 4)
+local THROAT = Vector(34, 10, 8)
 
 local function Smooth(x)
 	x = math.Clamp(x, 0, 1)
@@ -72,7 +75,7 @@ function Body.Layout(origin, yaw, filter)
 end
 
 function Body.Bounds(ground)
-	local pad = RADIUS * HEAD_WIDTH * 2
+	local pad = PAD
 	local mins, maxs = Vector(ground[1]), Vector(ground[1])
 	for _, p in ipairs(ground) do
 		mins.x, mins.y, mins.z = math.min(mins.x, p.x), math.min(mins.y, p.y), math.min(mins.z, p.z)
@@ -104,14 +107,14 @@ end
 local function Profile(d, total)
 	local h = d / HEAD_LENGTH
 	local w
-	if h < 0.55 then
-		w = Lerp(Smooth(h / 0.55), SNOUT, HEAD_WIDTH)
+	if h < 0.4 then
+		w = MOUTH
 	elseif h < 1 then
-		w = Lerp(Smooth((h - 0.55) / 0.45), HEAD_WIDTH, NECK)
+		w = Lerp(Smooth((h - 0.4) / 0.6), MOUTH, NECK)
 	else
 		w = Lerp(Smooth((h - 1) / 1.5), NECK, 1)
 	end
-	w = w * math.sqrt(math.min(1, d / NOSE))
+	w = w * Lerp(Smooth(d / LIP), LIP_IN, 1)
 	local f = d / total
 	if f > TAIL_START then w = w * ((1 - f) / (1 - TAIL_START)) ^ 0.9 end
 	return RADIUS * w, RADIUS * w * Lerp(Smooth(h - 0.5), HEAD_FLAT, FLAT)
@@ -129,7 +132,7 @@ local function Frame(spine, d, hint)
 	local side = tangent:Cross(up):GetNormalized()
 	up = side:Cross(tangent):GetNormalized()
 	local w, h = Profile(d, spine.total)
-	return center + up * (h * BELLY_FLAT), side, up, w, h, j
+	return center + up * (h * BELLY_FLAT), side, up, w, h, j, tangent
 end
 
 local AXES = { Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0), Vector(0, 0, 1), Vector(0, 0, -1) }
@@ -189,12 +192,23 @@ function Body.Build(ground, normals)
 	while true do
 		rings[#rings + 1], hint = Ring(spine, d, hint)
 		if d >= total then break end
-		local fine = d < NOSE * 2 or d > total - NOSE * 2
+		local fine = d < LIP * 2 or d > total - NOSE * 2
 		d = math.min(d + (fine and FINE or COARSE), total)
 	end
 
+	local mouth, side, up, _, mh, _, tangent = Frame(spine, 0)
+	SampleLight(mouth + up * mh)
+	local throat = { mouth, THROAT * Bright(-tangent) }
+
 	local obj = Mesh(Body.Material)
-	mesh.Begin(obj, MATERIAL_QUADS, (#rings - 1) * SIDES)
+	mesh.Begin(obj, MATERIAL_QUADS, #rings * SIDES)
+	for k = 0, SIDES - 1 do
+		local k2 = (k + 1) % SIDES
+		Vert(throat)
+		Vert({ rings[1][k2][1], throat[2] })
+		Vert({ rings[1][k][1], throat[2] })
+		Vert(throat)
+	end
 	for r = 1, #rings - 1 do
 		local a, b = rings[r], rings[r + 1]
 		for k = 0, SIDES - 1 do
@@ -207,12 +221,13 @@ function Body.Build(ground, normals)
 	end
 	mesh.End()
 
-	local base, side, up, w, h = Frame(spine, HEAD_LENGTH * EYE_AT)
+	local head = { pos = mouth, fwd = -tangent, up = up, side = side }
+	local base, eside, eup, w, h = Frame(spine, HEAD_LENGTH * EYE_AT)
 	local eyes = {}
 	for _, dir in ipairs({ 1, -1 }) do
-		eyes[#eyes + 1] = base + side * (dir * w * EYE_OUT) + up * (h * EYE_UP)
+		eyes[#eyes + 1] = base + eside * (dir * w * EYE_OUT) + eup * (h * EYE_UP)
 	end
-	return obj, eyes
+	return obj, eyes, head
 end
 
 function Body.Draw(obj, eyes)
