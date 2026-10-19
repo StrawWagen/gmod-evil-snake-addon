@@ -46,6 +46,7 @@ EvilSnake.SETTINGS = {
 	{ name = "tail_length", default = 0.3, min = 0.05, max = 1, decimals = 2, label = "Tail length",
 		help = "How much of the body tapers down to the tail tip" },
 	{ name = "color", default = 9858664, min = 0, max = 16777215, color = true, label = "Colour" },
+	{ name = "slither_volume", default = 1, min = 0, max = 1, decimals = 2, label = "Slither volume" },
 	{ name = "gravity", default = 600, min = 0, max = 3000, decimals = 0, label = "Gravity" },
 	{ name = "grip_along", default = 0.3, min = 0, max = 5, decimals = 2, label = "Lengthwise grip",
 		help = "Ground friction against the body sliding along its length" },

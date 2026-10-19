@@ -194,6 +194,8 @@ function ENT:Think()
 		self:SetPos(c.x[1])
 		self.Dirty = true
 	end
+	local slide = math.Round(c.slide or 0)
+	if slide ~= self:GetSlide() then self:SetSlide(slide) end
 	self:Swallow(now)
 	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c)) then self.Dirty = true end
 	if self.Dirty and now >= (self.NextSend or 0) then

@@ -10,6 +10,7 @@ ENT.DisableDuplicator = true
 function ENT:SetupDataTables()
 	self:NetworkVar("Float", 0, "Girth")
 	self:NetworkVar("Float", 1, "Length")
+	self:NetworkVar("Float", 2, "Slide")
 end
 
 function ENT:Radius()

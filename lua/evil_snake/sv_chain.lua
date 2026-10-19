@@ -270,19 +270,22 @@ local function Tick(c)
 			end
 		end
 	end
-	local moved = 0
+	local moved, slid = 0, 0
 	for i = 1, n do
 		local along = (p[math.min(i + 1, n)] - p[math.max(i - 1, 1)]):GetNormalized()
 		local to, climbed = Collide(c, i, x[i], p[i], along, gravity)
 		old[i], x[i] = climbed and Vector(x[i].x, x[i].y, to.z) or x[i], to
 		moved = math.max(moved, to:DistToSqr(old[i]))
+		if cn[i] then slid = slid + math.sqrt((to.x - old[i].x) ^ 2 + (to.y - old[i].y) ^ 2) end
 	end
+	c.slide = slid / n / DT
 	return moved
 end
 
 function Chain.Update(c, dt)
 	Size(c)
 	if not c.awake then
+		c.slide = 0
 		c.nap = c.nap + dt
 		if c.nap < NAP then return false end
 		c.nap = 0
