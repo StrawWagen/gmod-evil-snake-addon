@@ -38,7 +38,7 @@ end
 function ENT:Snapshot(t, pts, meals)
 	local snaps = self.Snaps or {}
 	self.Snaps = snaps
-	local d, off = RealTime() - t, self.Offset
+	local d, off = UnPredictedCurTime() - t, self.Offset
 	self.Offset = (not off or d < off or d - off > GAP) and d or off + (d - off) * DRIFT
 	local last = snaps[#snaps]
 	if last then
@@ -124,7 +124,7 @@ function ENT:Think()
 		end
 		return
 	end
-	local rt = now - self.Offset - DELAY
+	local rt = math.min(UnPredictedCurTime() - self.Offset - DELAY, snaps[#snaps].t)
 	local pose, snap = Sample(snaps, rt)
 	self.Pose = pose
 	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
