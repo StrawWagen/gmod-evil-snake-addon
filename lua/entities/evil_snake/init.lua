@@ -25,6 +25,10 @@ local GULP_DELAY = 0.35
 local GULP_AT = 1
 local EAT_LEVEL = 80
 local MIN_REACH = 4
+local PRESENCE_REACH = 450
+local DREAD = 4
+local GRAB_FEAR = 30
+local GRAB_FEAR_RANGE = 900
 local FAST = 4
 
 function ENT:SpawnFunction(ply, tr, class)
@@ -58,6 +62,16 @@ function ENT:Initialize()
 	self.Stomach = EvilSnake.Stomach.New()
 	self.Stomach.onDigest = function(v) self:Absorb(v) end
 	self.Mind = EvilSnake.Brain.New()
+	Evil.Presence(self, { reach = PRESENCE_REACH, dread = DREAD, near = self.Nearest })
+end
+
+function ENT:Nearest(pos)
+	local best, bestDist
+	for _, p in ipairs(self.Chain.x) do
+		local d = p:DistToSqr(pos)
+		if not bestDist or d < bestDist then best, bestDist = p, d end
+	end
+	return best
 end
 
 function ENT:Bounds()
@@ -190,6 +204,7 @@ function ENT:Grab(ent, now)
 	end
 	self.Prey = nil
 	self:Bite(size)
+	Evil.Frighten(self:Mouth(), GRAB_FEAR_RANGE, GRAB_FEAR, true)
 	self.Dirty = true
 	hook.Run("EvilSnakeGrabbed", self, ent)
 end
