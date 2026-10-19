@@ -8,14 +8,19 @@ local sqrt, sin, cos, max, min, abs = math.sqrt, math.sin, math.cos, math.max, m
 local SUB = 4
 local SIDES = 20
 local OUTER = 4
-local ROLL = 6
-local BOWL = 5
-local LIP = 0.18
-local WALL = 0.1
-local IDLE = 0.3
-local GULLET = 0.7
+local ROLL = 9
+local BOWL = 7
+local RIM = 0.24
+local POKE = 0.7
+local TUCK = 1.1
+local CLEAR = 0.03
+local SPREAD = 1 + math.cos(TUCK) + TUCK * 0.5
+local IDLE = 0.45
+local GULLET = 0.75
+local RIB = 0.12
 local THROAT = { 120, 28, 38 }
 local DARK = 0.2
+local GROOVE = 0.6
 local PAD = 4
 local RELIGHT = 3
 local BATCH = 100
@@ -60,45 +65,62 @@ local function Ring(x, y, z, dx, dy, dz, w, nr, ax, joint, r, g, b)
 	rr[count], rg[count], rb[count] = r or cr, g or cg, b or cb
 end
 
-local function Along(p, d, z, rho, nr, nf, r, g, b)
-	Ring(p.x + d.x * z, p.y + d.y * z, p.z + d.z * z, -d.x, -d.y, -d.z, rho, nr, -nf, 1, r, g, b)
-end
-
 local function Tint(t, shade)
 	return Lerp(t, cr, THROAT[1]) * shade, Lerp(t, cg, THROAT[2]) * shade, Lerp(t, cb, THROAT[3]) * shade
 end
 
 function Body.Snug(fit, R)
-	return max(1, fit / R + 2 * LIP + WALL)
+	return max(1, (fit / R + RIM * SPREAD) / (1 - CLEAR))
+end
+
+local fz, fr, fw, fcr, fcg, fcb = {}, {}, {}, {}, {}, {}
+local fn = 0
+
+local function Point(z, rho, w, r, g, b)
+	fn = fn + 1
+	fz[fn], fr[fn], fw[fn] = z, rho, w
+	fcr[fn], fcg[fn], fcb[fn] = r or cr, g or cg, b or cb
 end
 
 local function Mouth(p, back, W, R, mouth)
 	local fwd = -back
 	local open = mouth and mouth.open or 0
 	local dir = mouth and mouth.dir and LerpVector(open, fwd, mouth.dir):GetNormalized() or fwd
-	local lr = R * LIP
+	local t = R * RIM
 	local ap = Lerp(open, W * IDLE, mouth and mouth.fit or 0)
-	ap = math.Clamp(ap, R * 0.05, max(W - 2 * lr - R * WALL, R * 0.05))
-	local inner = W - lr
-	local am = math.acos(math.Clamp((ap + lr) / inner, 0, 1))
-	local zc, rc = inner * sin(am), inner * cos(am)
+	ap = math.Clamp(ap, R * 0.05, max(W * (1 - CLEAR) - t * SPREAD, R * 0.05))
+	local rc = ap + t
+	local zc = sqrt(max(W * W - rc * rc, 0)) + t * POKE
 	local deep = W * GULLET
+	fn = 0
 	for k = 0, BOWL - 1 do
 		local phi = (1 - k / BOWL) * math.pi * 0.5
-		local c, s = cos(phi), sin(phi)
-		local nr, nf = -c * deep, s * ap
-		local nl = sqrt(nr * nr + nf * nf)
-		Along(p, dir, zc - deep * s, ap * c, nr / nl, nf / nl, Tint(1, Lerp(c, DARK, 0.7)))
+		local c = cos(phi)
+		local ridge = k > 0 and k % 2 == 0
+		Point(zc - deep * sin(phi), ap * c * (ridge and 1 - RIB or 1), 1, Tint(1, Lerp(c, DARK, 0.7) * (ridge and 1.25 or 1)))
 	end
+	local te = -TUCK
 	for k = 0, ROLL do
-		local th = math.pi - (math.pi - am) * k / ROLL
-		local c, s = cos(th), sin(th)
-		Along(p, dir, zc + lr * s, rc + lr * c, c, s, Tint(math.Clamp(-c * 2, 0, 1), Lerp(math.Clamp(-c, 0, 1), 1, 0.7)))
+		local th = math.pi - (math.pi - te) * k / ROLL
+		local c = cos(th)
+		Point(zc + t * sin(th), rc + t * c, 1, Tint(math.Clamp(-c * 2, 0, 1), Lerp(math.Clamp(-c, 0, 1), 1, 0.7)))
 	end
-	for k = 1, OUTER do
-		local a = am * (1 - k / (OUTER + 1))
-		local c, s = cos(a), sin(a)
-		Along(p, LerpVector(a / am, fwd, dir):GetNormalized(), W * s, W * c, c, s)
+	local edge = ap + t * SPREAD
+	local ac = math.acos(math.Clamp(edge / W, 0, 0.999))
+	for k = 0, OUTER - 1 do
+		local a = ac * (1 - k / OUTER)
+		local shade = k == 0 and GROOVE or 1
+		Point(W * sin(a), W * cos(a), a / ac, cr * shade, cg * shade, cb * shade)
+	end
+	fz[fn + 1], fr[fn + 1] = 0, W
+	for k = 1, fn do
+		local a, b = max(k - 1, 1), k + 1
+		local dz, dr = fz[b] - fz[a], fr[b] - fr[a]
+		local l = sqrt(dz * dz + dr * dr)
+		if l < 1e-6 then dz, dr, l = 1, 0, 1 end
+		local d = fw[k] >= 1 and dir or LerpVector(fw[k], fwd, dir):GetNormalized()
+		local z = fz[k]
+		Ring(p.x + d.x * z, p.y + d.y * z, p.z + d.z * z, -d.x, -d.y, -d.z, fr[k], -dz / l, -dr / l, 1, fcr[k], fcg[k], fcb[k])
 	end
 end
 

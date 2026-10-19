@@ -18,7 +18,7 @@ local GAP = EvilSnake.SEND * 3
 local KEEP = 8
 local DRIFT = 0.05
 local LIP = 0.5
-local FIT = 0.65
+local FIT = 0.75
 local SHUT = { 0.9, 1.15 }
 
 local min = math.min
