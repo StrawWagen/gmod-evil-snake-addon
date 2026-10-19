@@ -8,10 +8,9 @@ local Setting = EvilSnake.Setting
 local PREY_SIZE = 40
 local PREY_SCALE = { 0.6, 1.6 }
 local MAX_TRANSIT = 32
-local MAX_SEGMENTS = 254
 
 function Stomach.New()
-	return setmetatable({ victims = {}, transit = {} }, Stomach)
+	return setmetatable({ victims = {}, transit = {}, rev = 0 }, Stomach)
 end
 
 function Stomach:Add(v)
@@ -98,10 +97,9 @@ function Stomach:Eating(links)
 end
 
 function Stomach:Length(base, mass)
-	return math.Clamp(base + Setting("growth") * (mass or self:Mass()), 1, MAX_SEGMENTS)
+	return EvilSnake.GrownLength(base, mass or self:Mass())
 end
 
 function Stomach:Girth(mass)
-	local girth = 1 + Setting("fattening") * math.log(1 + (mass or self:Mass()))
-	return math.min(girth, math.max(1, Setting("girth_max")))
+	return EvilSnake.GrownGirth(mass or self:Mass())
 end

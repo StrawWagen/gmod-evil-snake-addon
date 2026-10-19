@@ -112,6 +112,7 @@ end
 
 function ENT:Rethink()
 	self.Mind = EvilSnake.Brain.Rebuild(self.Stomach.victims)
+	self.Stomach.rev = (self.Stomach.rev + 1) % 65536
 	self:Grow()
 end
 
