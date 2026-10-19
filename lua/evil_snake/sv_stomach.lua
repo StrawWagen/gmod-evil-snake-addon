@@ -25,6 +25,14 @@ function Stomach:Add(v)
 	return v
 end
 
+function EvilSnake.PreySize(ent)
+	return math.Clamp(ent:BoundingRadius() / PREY_SIZE, PREY_SCALE[1], PREY_SCALE[2])
+end
+
+function EvilSnake.BulgeSize(size)
+	return 1 + (Setting("bulge_size") - 1) * size
+end
+
 local function Weapon(ent)
 	local wep = ent.GetActiveWeapon and ent:GetActiveWeapon()
 	return IsValid(wep) and wep:GetClass() or nil
@@ -47,7 +55,7 @@ function Stomach:Record(ent)
 		kind = EvilSnake.Kind(ent),
 		weapon = Weapon(ent),
 		health = ent:GetMaxHealth(),
-		size = math.Clamp(ent:BoundingRadius() / PREY_SIZE, PREY_SCALE[1], PREY_SCALE[2]),
+		size = EvilSnake.PreySize(ent),
 	})
 end
 
@@ -57,10 +65,10 @@ function Stomach:Settle(v)
 	if self.onDigest then self.onDigest(v) end
 end
 
-function Stomach:Swallow(ent)
+function Stomach:Swallow(ent, at)
 	local v = self:Record(ent)
 	if #self.transit >= MAX_TRANSIT then self:Settle(table.remove(self.transit, 1).victim) end
-	self.transit[#self.transit + 1] = { victim = v, at = 0, size = 1 + (Setting("bulge_size") - 1) * v.size }
+	self.transit[#self.transit + 1] = { victim = v, at = at or 0, size = EvilSnake.BulgeSize(v.size) }
 	return v
 end
 

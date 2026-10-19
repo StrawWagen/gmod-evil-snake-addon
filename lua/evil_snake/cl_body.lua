@@ -67,7 +67,7 @@ local function Widths(m, n, R, bulges, link)
 		swells[j] = 1
 	end
 	for _, b in ipairs(bulges) do
-		local swell = min(1, b.at / SWELL_IN)
+		local swell = b.swell or min(1, b.at / SWELL_IN)
 		swell = swell * swell * (3 - 2 * swell)
 		local size = 1 + (b.size - 1) * swell
 		local reach = R * EvilSnake.Profile(b.at / n, body, tail) * size * SPAN

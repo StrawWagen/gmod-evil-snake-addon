@@ -17,6 +17,7 @@ local DELAY = EvilSnake.SEND * 2
 local GAP = EvilSnake.SEND * 3
 local KEEP = 8
 local DRIFT = 0.05
+local LIP = 0.5
 
 local min = math.min
 
@@ -26,7 +27,11 @@ net.Receive("EvilSnakeBody", function()
 	local pts, meals = {}, {}
 	for i = 1, net.ReadUInt(8) do pts[i] = net.ReadVector() end
 	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat() } end
-	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals) end
+	local held
+	if net.ReadBool() then
+		held = { ent = net.ReadEntity(), at = net.ReadDouble(), hold = net.ReadFloat(), size = net.ReadFloat() }
+	end
+	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals, held) end
 end)
 
 function ENT:Initialize()
@@ -35,7 +40,7 @@ function ENT:Initialize()
 	self.Snaps = self.Snaps or {}
 end
 
-function ENT:Snapshot(t, pts, meals)
+function ENT:Snapshot(t, pts, meals, held)
 	local snaps = self.Snaps or {}
 	self.Snaps = snaps
 	local d, off = UnPredictedCurTime() - t, self.Offset
@@ -44,11 +49,48 @@ function ENT:Snapshot(t, pts, meals)
 	if last then
 		if t <= last.t then return end
 		if t - last.t > GAP then
-			snaps[#snaps + 1] = { t = t - EvilSnake.SEND, pts = last.pts, meals = last.meals, fed = last.fed }
+			snaps[#snaps + 1] = { t = t - EvilSnake.SEND, pts = last.pts, meals = last.meals, fed = last.fed, held = last.held }
 		end
 	end
-	snaps[#snaps + 1] = { t = t, pts = pts, meals = meals, fed = t }
+	snaps[#snaps + 1] = { t = t, pts = pts, meals = meals, fed = t, held = held }
 	while #snaps > KEEP do table.remove(snaps, 1) end
+end
+
+local function DrawHeld(victim)
+	local snake = victim.EvilSnakeHolder
+	if not IsValid(snake) or snake.Victim ~= victim or not snake.Pose then
+		victim:DrawModel()
+		return
+	end
+	local pose, r = snake.Pose, snake:Radius()
+	local pos, ang, f, mouth = EvilSnake.HeldPlace(pose[1], pose[2], r, victim:OBBMaxs().z * snake.HeldDepth)
+	victim:SetRenderOrigin(pos)
+	victim:SetRenderAngles(ang)
+	victim:InvalidateBoneCache()
+	victim:SetupBones()
+	local clip = render.EnableClipping(true)
+	render.PushCustomClipPlane(f, f:Dot(mouth) - r * LIP)
+	victim:DrawModel()
+	render.PopCustomClipPlane()
+	render.EnableClipping(clip)
+	victim:SetRenderOrigin()
+	victim:SetRenderAngles()
+	victim:InvalidateBoneCache()
+end
+
+function ENT:Hold(held)
+	local victim = held and held.ent
+	if not IsValid(victim) then victim = nil end
+	local was = self.Victim
+	if was ~= victim and IsValid(was) and was.EvilSnakeHolder == self then
+		was.RenderOverride = nil
+		was.EvilSnakeHolder = nil
+	end
+	self.Victim = victim
+	if victim then
+		victim.EvilSnakeHolder = self
+		victim.RenderOverride = DrawHeld
+	end
 end
 
 local function Sample(snaps, rt)
@@ -106,6 +148,7 @@ function ENT:Slither(now)
 end
 
 function ENT:OnRemove()
+	self:Hold(nil)
 	for _, layer in ipairs(SLITHER) do
 		if self[layer.key] then self[layer.key]:Stop() end
 	end
@@ -134,6 +177,15 @@ function ENT:Think()
 		bulges[i] = { at = math.min(m.at + ahead, #pose - 1), size = m.size }
 		fattest = math.max(fattest, m.size)
 	end
+	local held = snap.held
+	self.HeldDepth = 0
+	if held then
+		local depth, at, swell = EvilSnake.Hold(rt - held.at, held.hold)
+		bulges[#bulges + 1] = { at = at, size = held.size, swell = swell }
+		fattest = math.max(fattest, held.size)
+		self.HeldDepth = depth
+	end
+	self:Hold(held or snaps[#snaps].held)
 	self.Bulges = bulges
 	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest, self:Radius()))
 end

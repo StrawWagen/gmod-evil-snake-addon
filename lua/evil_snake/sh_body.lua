@@ -36,3 +36,44 @@ function EvilSnake.Profile(t, body, tail)
 	local u = math.max(0, (t - start) / tail)
 	return (body + (1 - body) * s * s) * (1 - u * u)
 end
+
+local GRAB_IN = 0.25
+local PULL = 0.8
+local PULL_DEEP = 0.7
+local HALF = 0.45
+local CREEP = 0.15
+local DEEP = 1.15
+local LIFT = 0.5
+local UP = Vector(0, 0, 1)
+
+local function Smooth(u)
+	return u * u * (3 - 2 * u)
+end
+
+function EvilSnake.HoldLength(hold)
+	return GRAB_IN + hold + PULL
+end
+
+function EvilSnake.Hold(t, hold)
+	t = math.max(t, 0)
+	if t < GRAB_IN then
+		local u = Smooth(t / GRAB_IN)
+		return HALF * u, 0, u
+	end
+	t = t - GRAB_IN
+	if t < hold then return HALF + CREEP * t / hold, 0, 1 end
+	local u = math.min((t - hold) / PULL, 1)
+	return Lerp(Smooth(math.min(u / PULL_DEEP, 1)), HALF + CREEP, DEEP), Smooth(u), 1
+end
+
+function EvilSnake.HeldPlace(head, neck, r, depth)
+	local f = head - neck
+	f:Normalize()
+	local mouth = head + f * r
+	local up = f + UP * LIFT
+	up:Normalize()
+	local fwd = UP - up * UP:Dot(up)
+	if fwd:LengthSqr() < 1e-4 then fwd = -f end
+	fwd:Normalize()
+	return mouth - up * depth, fwd:AngleEx(up), f, mouth
+end

@@ -22,7 +22,7 @@ local SQUISH = {
 }
 local GULP = { "npc/barnacle/barnacle_gulp1.wav", "npc/barnacle/barnacle_gulp2.wav" }
 local GULP_DELAY = 0.35
-local BITE_GAP = 0.15
+local GULP_AT = 1
 local EAT_LEVEL = 80
 local MIN_REACH = 4
 
@@ -81,11 +81,20 @@ function ENT:SendBody(ply)
 		net.WriteFloat(m.at)
 		net.WriteFloat(m.size)
 	end
+	local held = self.Held
+	net.WriteBool(held ~= nil)
+	if held then
+		net.WriteEntity(held.ent)
+		net.WriteDouble(held.at)
+		net.WriteFloat(held.hold)
+		net.WriteFloat(held.size)
+	end
 	if ply then net.Send(ply) else net.Broadcast() end
 end
 
 local function Edible(ent)
 	return IsValid(ent) and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
+		and not ent.EvilSnakeHeld
 end
 
 function ENT:Mouth()
@@ -128,21 +137,112 @@ function ENT:Rethink()
 	self:Grow()
 end
 
-function ENT:Chomp(v, now)
-	if now < (self.NextBite or 0) then return end
-	self.NextBite = now + BITE_GAP
-	local volume = EvilSnake.Setting("eat_volume")
+function ENT:Voice(size)
+	local volume = Setting("eat_volume")
 	if volume <= 0 then return end
 	local mass = math.max(self:Weight(), 1e-3)
-	local pitch = math.Clamp(105 / mass ^ 0.1 / v.size ^ 0.25, 50, 160)
+	local pitch = math.Clamp(105 / mass ^ 0.1 / size ^ 0.25, 50, 160)
 	local level = EAT_LEVEL + math.Clamp(math.log(mass, 2) * 2, 0, 10)
-	local loud = math.min(volume * (0.7 + 0.3 * v.size), 1)
+	return pitch, level, math.min(volume * (0.7 + 0.3 * size), 1)
+end
+
+function ENT:Bite(size)
+	local pitch, level, loud = self:Voice(size)
+	if not pitch then return end
 	self:EmitSound(BITE, level, pitch * math.Rand(0.95, 1.05), loud)
+	self:EmitSound(table.Random(SQUISH), level, pitch * math.Rand(0.9, 1.1), loud * 0.8)
+end
+
+function ENT:Chomp(size)
+	local pitch, level, loud = self:Voice(size)
+	if not pitch then return end
 	self:EmitSound(table.Random(CRUNCH), level, pitch * math.Rand(0.9, 1.1), loud)
 	self:EmitSound(table.Random(SQUISH), level, pitch * math.Rand(0.9, 1.1), loud * 0.8)
-	timer.Simple(GULP_DELAY * v.size, function()
+	timer.Simple(GULP_DELAY * size, function()
 		if IsValid(self) then self:EmitSound(table.Random(GULP), level, pitch * 0.9, loud) end
 	end)
+end
+
+function ENT:Grab(ent, now)
+	local size = EvilSnake.PreySize(ent)
+	local wep = ent.GetActiveWeapon and ent:GetActiveWeapon()
+	self.Held = {
+		ent = ent, at = now, hold = Setting("hold_time"), size = EvilSnake.BulgeSize(size), prey = size,
+		move = ent:GetMoveType(), weapon = IsValid(wep) and wep or nil,
+	}
+	ent.EvilSnakeHeld = self
+	ent:AddEFlags(EFL_NO_THINK_FUNCTION)
+	ent:AddFlags(FL_NOTARGET)
+	ent:SetMoveType(MOVETYPE_NONE)
+	ent:SetNotSolid(true)
+	ent:DrawShadow(false)
+	if IsValid(wep) then wep:SetNoDraw(true) end
+	local seq = ACT_BARNACLE_PULL and ent:SelectWeightedSequence(ACT_BARNACLE_PULL)
+	if seq and seq >= 0 then
+		ent:ResetSequence(seq)
+		ent:SetCycle(0)
+	end
+	self.Prey = nil
+	self:Bite(size)
+	self:Place()
+	self.Dirty = true
+	hook.Run("EvilSnakeGrabbed", self, ent)
+end
+
+function ENT:Release()
+	local held = self.Held
+	self.Held = nil
+	self.Dirty = true
+	if not held or not IsValid(held.ent) then return end
+	local ent = held.ent
+	ent.EvilSnakeHeld = nil
+	ent:RemoveEFlags(EFL_NO_THINK_FUNCTION)
+	ent:RemoveFlags(FL_NOTARGET)
+	ent:SetMoveType(held.move)
+	ent:SetNotSolid(false)
+	ent:DrawShadow(true)
+	if IsValid(held.weapon) then held.weapon:SetNoDraw(false) end
+	ent:SetPos(self:Mouth())
+	ent:SetAngles(Angle(0, ent:GetAngles().y, 0))
+	hook.Run("EvilSnakeReleased", self, ent)
+end
+
+function ENT:Place()
+	local held, x = self.Held, self.Chain.x
+	local ent = held.ent
+	local depth = EvilSnake.Hold(CurTime() - held.at, held.hold)
+	local pos, ang = EvilSnake.HeldPlace(x[1], x[2], self:Radius(), ent:OBBMaxs().z * depth)
+	ent:SetPos(pos)
+	ent:SetAngles(ang)
+end
+
+function ENT:Hold(now, dt)
+	local held = self.Held
+	if not held then return end
+	local ent = held.ent
+	if not IsValid(ent) then
+		self.Held = nil
+		self.Dirty = true
+		return
+	end
+	self.Dirty = true
+	if now - held.at < EvilSnake.HoldLength(held.hold) then
+		self:Place()
+		local dur = ent:SequenceDuration()
+		if dur > 0 then ent:SetCycle((ent:GetCycle() + dt / dur) % 1) end
+		return
+	end
+	self.Held = nil
+	ent.EvilSnakeHeld = nil
+	local v = self.Stomach:Swallow(ent, GULP_AT)
+	self:Chomp(held.prey)
+	hook.Run("EvilSnakeSwallowed", self, v, ent)
+	ent:Remove()
+	self.NextDecide = now
+end
+
+function ENT:OnRemove()
+	self:Release()
 end
 
 local function Reaches(ent, from, to, steps, reach)
@@ -153,25 +253,18 @@ local function Reaches(ent, from, to, steps, reach)
 	return false
 end
 
-function ENT:Swallow(now)
+function ENT:Catch(now)
 	local mouth = self:Mouth()
 	local from = self.LastMouth or mouth
 	self.LastMouth = mouth
-	if Setting("hunt_npcs") == 0 then return end
+	if self.Held or Setting("hunt_npcs") == 0 then return end
 	local reach = Setting("bite_reach")
 	local travel = from:Distance(mouth)
 	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
 	for _, ent in ipairs(ents.FindInSphere((from + mouth) * 0.5, reach + travel * 0.5)) do
 		if Edible(ent) and Reaches(ent, from, mouth, steps, reach) then
-			local v = self.Stomach:Swallow(ent)
-			self:Chomp(v, now)
-			self.Dirty = true
-			hook.Run("EvilSnakeSwallowed", self, v, ent)
-			ent:Remove()
-			if ent == self.Prey then
-				self.Prey = nil
-				self.NextDecide = now
-			end
+			self:Grab(ent, now)
+			return
 		end
 	end
 end
@@ -180,6 +273,11 @@ function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
 	local yaw = EvilSnake.Chain.HeadYaw(c)
+	if self.Held then
+		self.Prey, self.LastHead = nil, nil
+		EvilSnake.Chain.Drive(c, yaw, 0)
+		return
+	end
 	if self.LastHead and c.speed > 0 then
 		local moved = self.LastHead:Distance(head)
 		if moved < c.speed * DECIDE * STUCK then
@@ -238,7 +336,8 @@ function ENT:Think()
 	end
 	local slide = math.Round(c.slide or 0)
 	if slide ~= self:GetSlide() then self:SetSlide(slide) end
-	self:Swallow(now)
+	self:Catch(now)
+	self:Hold(now, dt)
 	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c)) then self.Dirty = true end
 	if self.Dirty and now >= (self.NextSend or 0) then
 		self.Dirty = false

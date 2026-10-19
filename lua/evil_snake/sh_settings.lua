@@ -6,7 +6,9 @@ EvilSnake.SETTINGS = {
 	{ name = "sight_range", default = 3000, min = 0, max = 10000, decimals = 0, label = "Sight range",
 		help = "How far away it notices NPCs" },
 	{ name = "bite_reach", default = 24, min = 0, max = 200, decimals = 0, label = "Bite reach",
-		help = "How close its mouth has to get to someone to swallow them" },
+		help = "How close its mouth has to get to someone to grab them" },
+	{ name = "hold_time", default = 3, min = 0, max = 15, decimals = 1, label = "Swallow time",
+		help = "Seconds it holds someone half in its mouth before pulling them down" },
 	{ name = "bulge_size", default = 1.8, min = 1, max = 4, decimals = 2, label = "Bulge size",
 		help = "How fat a swallowed victim makes the body, in body thicknesses. Bigger victims bulge more" },
 	{ name = "bulge_speed", default = 80, min = 5, max = 1000, decimals = 0, label = "Bulge speed",
@@ -63,22 +65,22 @@ EvilSnake.SETTINGS = {
 
 EvilSnake.PRESETS = {
 	{ name = "chill", label = "Chill", values = {
-		hunt_npcs = 1, sight_range = 800, bite_reach = 16, bulge_size = 2.2, bulge_speed = 35,
+		hunt_npcs = 1, sight_range = 800, bite_reach = 16, hold_time = 5, bulge_size = 2.2, bulge_speed = 35,
 		growth = 1, fattening = 0.25, girth_max = 3.5, learning = 0.5, habituation = 1,
 		wander = 1, hunt_speed = 80, wander_speed = 30, turn_rate = 70, sway = 45, wavelength = 220,
 	} },
 	{ name = "normal", label = "Normal", values = {
-		hunt_npcs = 1, sight_range = 3000, bite_reach = 24, bulge_size = 1.8, bulge_speed = 80,
+		hunt_npcs = 1, sight_range = 3000, bite_reach = 24, hold_time = 3, bulge_size = 1.8, bulge_speed = 80,
 		growth = 2, fattening = 0.15, girth_max = 3, learning = 1, habituation = 0.5,
 		wander = 1, hunt_speed = 170, wander_speed = 60, turn_rate = 120, sway = 35, wavelength = 150,
 	} },
 	{ name = "aggressive", label = "Aggressive", values = {
-		hunt_npcs = 1, sight_range = 5500, bite_reach = 40, bulge_size = 1.6, bulge_speed = 180,
+		hunt_npcs = 1, sight_range = 5500, bite_reach = 40, hold_time = 2, bulge_size = 1.6, bulge_speed = 180,
 		growth = 4, fattening = 0.12, girth_max = 3, learning = 1.5, habituation = 0.3,
 		wander = 1, hunt_speed = 320, wander_speed = 110, turn_rate = 240, sway = 25, wavelength = 120,
 	} },
 	{ name = "unhinged", label = "Unhinged", values = {
-		hunt_npcs = 1, sight_range = 10000, bite_reach = 90, bulge_size = 2.8, bulge_speed = 600,
+		hunt_npcs = 1, sight_range = 10000, bite_reach = 90, hold_time = 0.8, bulge_size = 2.8, bulge_speed = 600,
 		growth = 12, fattening = 0.4, girth_max = 6, learning = 4, habituation = 0,
 		wander = 1, hunt_speed = 700, wander_speed = 280, turn_rate = 600, sway = 60, wavelength = 70,
 	} },
