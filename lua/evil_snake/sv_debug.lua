@@ -51,3 +51,12 @@ end, function(cmd)
 	for kind in SortedPairs(EvilSnake.KINDS) do list[#list + 1] = cmd .. " " .. kind end
 	return list
 end, "Feed every snake on the map someone of a kind, straight to digested: <kind> [count]")
+
+concommand.Add("evil_snake_knock", function(ply, _, args)
+	if not IsValid(ply) or not ply:IsSuperAdmin() then return end
+	local hit = ply:GetEyeTrace().Entity
+	local target = IsValid(hit) and (hit:IsNPC() or hit:IsPlayer()) and hit or ply
+	local aim = ply:GetAimVector()
+	if target == ply then aim = -aim end
+	EvilSnake.Knock(target, aim * 300 + Vector(0, 0, 150), tonumber(args[1]))
+end, nil, "Knock out who you're looking at, or yourself: [seconds]")

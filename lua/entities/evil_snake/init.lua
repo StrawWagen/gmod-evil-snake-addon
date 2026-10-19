@@ -94,7 +94,7 @@ end
 
 local function Edible(ent)
 	return IsValid(ent) and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
-		and not ent.EvilSnakeHeld
+		and not ent.EvilSnakeHeld and not ent.EvilSnakeKnocked
 end
 
 function ENT:Mouth()
