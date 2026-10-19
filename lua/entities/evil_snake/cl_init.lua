@@ -4,7 +4,6 @@ language.Add("evil_snake", "Evil snake")
 
 local REBUILD = 0.25
 local RELIGHT = 1
-local NEAR = 2500
 
 local function Same(a, b)
 	if not b or #a ~= #b then return false end
@@ -29,20 +28,10 @@ end
 
 function ENT:Draw()
 	if not self.Ground then return end
-	local seed = self:GetSeed()
-	if self.GeneSeed ~= seed then
-		self.GeneSeed = seed
-		self.Genes = EvilSnake.Body.Genes(seed)
-		self.MouthState = EvilSnake.Mouth.Create(seed)
-		self.Dirty = true
-	end
 	if self.Dirty or not self.Shape then
 		self.Dirty = false
 		self.Relight = RealTime() + RELIGHT
-		self.Shape = EvilSnake.Body.Build(self.Ground, self.Normals, self.Genes)
+		self.Shape = EvilSnake.Body.Build(self.Ground, self.Normals)
 	end
-	local now = UnPredictedCurTime()
-	local near = EyePos():DistToSqr(self:GetPos()) < NEAR * NEAR
-	EvilSnake.Body.Draw(self.Shape, now, near)
-	if near then EvilSnake.Mouth.Draw(self.MouthState, self.Shape.head, now) end
+	EvilSnake.Body.Draw(self.Shape, UnPredictedCurTime(), self:GetSeed() % 1000 / 1000 * math.pi * 2)
 end
