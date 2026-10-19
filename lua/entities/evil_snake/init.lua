@@ -99,7 +99,9 @@ end
 
 function ENT:Mouth()
 	local x = self.Chain.x
-	return x[1] + (x[1] - x[2]):GetNormalized() * self:Radius()
+	local r = self:Radius()
+	local head, neck = EvilSnake.HeadPoints(x[1], x[2], r)
+	return head + (head - neck):GetNormalized() * EvilSnake.HeadRadius(r)
 end
 
 function ENT:FindPrey(from)
@@ -168,7 +170,8 @@ function ENT:EvilPose(victim)
 	if not held or held.ent ~= victim then return end
 	local x = self.Chain.x
 	local depth = EvilSnake.Hold(CurTime() - held.at, held.hold)
-	local pos, ang = EvilSnake.HeldPlace(x[1], x[2], victim:OBBMaxs().z * depth)
+	local head, neck = EvilSnake.HeadPoints(x[1], x[2], self:Radius())
+	local pos, ang = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * depth)
 	return pos, ang
 end
 

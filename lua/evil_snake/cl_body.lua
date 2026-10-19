@@ -58,11 +58,6 @@ local function Ring(x, y, z, dx, dy, dz, w, nr, ax, joint, r, g, b)
 	rr[count], rg[count], rb[count] = r or cr, g or cg, b or cb
 end
 
-function Body.HeadRadius(R)
-	if EvilSnake.Setting("static_head") == 0 then return R end
-	return min(R, EvilSnake.Setting("radius"))
-end
-
 function Body.Snug(fit, R)
 	return max(1, fit / (R * MAW))
 end
@@ -102,7 +97,7 @@ local function Widths(m, n, R, bulges, link)
 		widths[j] = R * EvilSnake.Profile((j - 1) / (m - 1), body, tail)
 		swells[j] = 1
 	end
-	local head = Body.HeadRadius(R)
+	local head = EvilSnake.HeadRadius(R)
 	if head < R then
 		local reach = NECK * R
 		for j = 1, m do
@@ -139,6 +134,16 @@ local function Rings(pts, bulges, R, link, mouth)
 	end
 	samples[#samples + 1] = pts[n]
 	local m = #samples
+	local drop = EvilSnake.HeadDrop(R)
+	if drop > 0 then
+		local reach = NECK * R
+		for j = 1, m do
+			local d = (j - 1) / SUB * link
+			if d >= reach then break end
+			local u = d / reach
+			samples[j] = samples[j] - Vector(0, 0, drop * (1 - u * u * (3 - 2 * u)))
+		end
+	end
 	local first = (samples[2] - samples[1]):GetNormalized()
 	Widths(m, n - 1, R, bulges, link)
 	Gullet(samples[1], first, widths[1], mouth)

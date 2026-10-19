@@ -60,7 +60,8 @@ end
 function ENT:EvilPose(victim)
 	local pose = self.Pose
 	if not pose then return end
-	local pos, ang, f, mouth = EvilSnake.HeldPlace(pose[1], pose[2], victim:OBBMaxs().z * (self.HeldDepth or 0))
+	local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], self:Radius())
+	local pos, ang, f, mouth = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * (self.HeldDepth or 0))
 	return pos, ang, f, f:Dot(mouth)
 end
 
@@ -160,12 +161,12 @@ function ENT:Think()
 		local depth, at, swell = EvilSnake.Hold(rt - held.at, held.hold)
 		local r = self:Radius()
 		local fit = Fit(held.ent, r)
-		local snug = EvilSnake.Body.Snug(fit, EvilSnake.Body.HeadRadius(r))
+		local snug = EvilSnake.Body.Snug(fit, EvilSnake.HeadRadius(r))
 		bulges[#bulges + 1] = { at = at, size = Lerp(at, snug, held.size), swell = swell }
 		fattest = math.max(fattest, held.size, snug)
 		self.HeldDepth = depth
 		local shut = math.Clamp((depth - SHUT[1]) / (SHUT[2] - SHUT[1]), 0, 1)
-		local _, up = EvilSnake.Gape(pose[1], pose[2])
+		local _, up = EvilSnake.Gape(EvilSnake.HeadPoints(pose[1], pose[2], r))
 		local snap = swell < 1 and math.sin(math.pi * swell) or 0
 		self.Gape = { fit = fit, open = swell * (1 - shut * shut * (3 - 2 * shut)), dir = up, snap = snap }
 	end

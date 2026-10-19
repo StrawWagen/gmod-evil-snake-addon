@@ -66,6 +66,22 @@ function EvilSnake.Hold(t, hold)
 	return Lerp(Smooth(math.min(u / PULL_DEEP, 1)), HALF + CREEP, DEEP), Smooth(u), 1
 end
 
+function EvilSnake.HeadRadius(R)
+	if EvilSnake.Setting("static_head") == 0 then return R end
+	return math.min(R, EvilSnake.Setting("radius"))
+end
+
+function EvilSnake.HeadDrop(R)
+	return R - EvilSnake.HeadRadius(R)
+end
+
+function EvilSnake.HeadPoints(head, neck, R)
+	local drop = EvilSnake.HeadDrop(R)
+	if drop <= 0 then return head, neck end
+	local down = Vector(0, 0, drop)
+	return head - down, neck - down
+end
+
 function EvilSnake.Gape(head, neck)
 	local f = head - neck
 	f:Normalize()
