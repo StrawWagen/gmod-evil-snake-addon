@@ -29,6 +29,11 @@ local TURN_SLOW = 0.35
 local PACE = 4
 local CRAWL = 1
 local MAX_BEND = 1.4
+local WATER = bit.bor(CONTENTS_WATER, CONTENTS_SLIME)
+local BUOY = 1.3
+local WET_DAMP = 0.9
+local DIVE = 0.8
+local SURGE = 0.5
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -40,10 +45,19 @@ local folds = {}
 function Chain.New(joints, filter)
 	local c = {
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
-		mins = Vector(), maxs = Vector(), hull = {}, trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1, stretch = 1,
+		mins = Vector(), maxs = Vector(), hull = {}, trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1, stretch = 1, wet = {},
 	}
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
 	return c
+end
+
+local function Wet(pos)
+	return bit.band(util.PointContents(pos), WATER) ~= 0
+end
+
+local function Soak(c, i, pos)
+	if not Wet(pos) then return 0 end
+	return Wet(pos + UP * (c.hull[i] / HULL * 0.5)) and 1 or 0.5
 end
 
 local function Hull(c, i, from, to)
@@ -394,23 +408,37 @@ local function Tick(c)
 	end
 	local gravity = Setting("gravity")
 	local fall = Vector(0, 0, -gravity * DT * DT)
-	for i = 1, n do p[i] = x[i] + (x[i] - old[i]) * DAMP + fall end
+	local wet = c.wet
+	for i = 1, n do
+		local soak = Soak(c, i, x[i])
+		wet[i] = soak
+		p[i] = x[i] + (x[i] - old[i]) * (soak > 0 and WET_DAMP or DAMP) + fall * (1 - BUOY * soak)
+	end
 	local want = c.want or 0
 	if c.driving and c.goal then
 		want = want * math.max(math.cos(math.rad(math.AngleDifference(c.goal, c.yaw))), TURN_SLOW)
 	end
 	c.speed = c.speed + (want - c.speed) * math.min(1, PACE * DT)
 	if want <= 0 and c.speed < CRAWL then c.speed = 0 end
+	local swim = wet[1] > 0 and (not cn[1] or wet[1] >= 1 and not (c.aim and c.aim.z < x[1].z))
 	if c.speed > 0 then
 		local step = Steer(c)
-		if cn[1] then p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * DAMP) + fall end
+		if cn[1] and not swim then
+			p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * DAMP) + fall
+		elseif swim then
+			local cap = c.speed * DT * DIVE
+			local to = x[1] + step * (1 + SURGE * math.cos(c.phase * 2))
+			to.z = to.z + math.Clamp(c.aim and c.aim.z - x[1].z or cap, -cap, cap)
+			if to.z > x[1].z and not Wet(to) then to.z = x[1].z end
+			p[1] = to
+		end
 		Record(c, x[1])
 		local follow = Setting("follow")
 		if follow > 0 and Follow(c, p, follow) then Reseed(c) end
 	else
 		c.driving = false
 	end
-	local pin = c.driving and cn[1] ~= nil
+	local pin = c.driving and (cn[1] ~= nil or swim)
 	local found = Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
 	if found and #found == 0 then found = nil end
 	for _ = 1, Setting("solver_passes") do

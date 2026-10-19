@@ -30,6 +30,9 @@ local DREAD = 4
 local GRAB_FEAR = 30
 local GRAB_FEAR_RANGE = 900
 local FAST = 4
+local SPLASH = { "ambient/water/water_splash1.wav", "ambient/water/water_splash2.wav", "ambient/water/water_splash3.wav" }
+local SPLASH_GAP = 0.5
+local SPLASH_LEVEL = 75
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -174,6 +177,16 @@ function ENT:Bite(size)
 	if not pitch then return end
 	self:EmitSound(BITE, level, pitch * math.Rand(0.95, 1.05), loud)
 	self:EmitSound(table.Random(SQUISH), level, pitch * math.Rand(0.9, 1.1), loud * 0.8)
+end
+
+function ENT:Splash(now)
+	local wet = (self.Chain.wet[1] or 0) > 0
+	if wet == (self.Wet or false) or now < (self.NextSplash or 0) then return end
+	self.Wet, self.NextSplash = wet, now + SPLASH_GAP
+	local volume = Setting("slither_volume")
+	if volume <= 0 then return end
+	local pitch = math.Clamp(110 / math.max(self:Weight(), 1e-3) ^ 0.12, 60, 140)
+	self:EmitSound(table.Random(SPLASH), SPLASH_LEVEL, pitch * math.Rand(0.9, 1.1), volume)
 end
 
 function ENT:Chomp(size)
@@ -345,6 +358,7 @@ function ENT:Think()
 		self:SetPos(c.x[1])
 		self.Dirty = true
 	end
+	self:Splash(now)
 	local slide = math.Round(c.slide or 0)
 	if slide ~= self:GetSlide() then self:SetSlide(slide) end
 	self:Catch(now)
