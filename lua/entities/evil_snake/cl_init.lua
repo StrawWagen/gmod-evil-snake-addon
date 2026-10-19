@@ -47,9 +47,9 @@ function ENT:Think()
 		fattest = math.max(fattest, m.size)
 	end
 	self.Bulges = bulges
-	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest))
+	self:SetRenderBoundsWS(EvilSnake.Body.Bounds(pose, fattest, self:Radius()))
 end
 
 function ENT:Draw()
-	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges) end
+	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius()) end
 end

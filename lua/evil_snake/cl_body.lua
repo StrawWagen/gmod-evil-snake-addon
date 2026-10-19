@@ -19,13 +19,13 @@ function Body.New()
 	return { light = {}, lit = 0 }
 end
 
-function Body.Bounds(pts, fattest)
+function Body.Bounds(pts, fattest, R)
 	local mins, maxs = Vector(pts[1]), Vector(pts[1])
 	for _, p in ipairs(pts) do
 		mins.x, mins.y, mins.z = min(mins.x, p.x), min(mins.y, p.y), min(mins.z, p.z)
 		maxs.x, maxs.y, maxs.z = max(maxs.x, p.x), max(maxs.y, p.y), max(maxs.z, p.z)
 	end
-	local pad = EvilSnake.Setting("radius") * (1 + (fattest or 1)) + PAD
+	local pad = R * (1 + (fattest or 1)) + PAD
 	return mins - Vector(pad, pad, pad), maxs + Vector(pad, pad, pad)
 end
 
@@ -80,7 +80,7 @@ local function Widths(m, n, R, bulges)
 	end
 end
 
-local function Rings(pts, bulges)
+local function Rings(pts, bulges, R)
 	count = 0
 	local n = #pts
 	local samples = {}
@@ -92,7 +92,7 @@ local function Rings(pts, bulges)
 	local m = #samples
 	local first = (samples[2] - samples[1]):GetNormalized()
 	local last = (samples[m] - samples[m - 1]):GetNormalized()
-	Widths(m, n - 1, EvilSnake.Setting("radius"), bulges)
+	Widths(m, n - 1, R, bulges)
 	Cap(samples[1], first.x, first.y, first.z, 1, false, widths[1])
 	for j = 1, m do
 		local a, b = max(j - 1, 1), min(j + 1, m)
@@ -122,11 +122,11 @@ local function Vert(i)
 	mesh.AdvanceVertex()
 end
 
-function Body.Draw(body, pts, bulges)
+function Body.Draw(body, pts, bulges, R)
 	if #pts < 2 then return end
 	Relight(body, pts)
 	cr, cg, cb = EvilSnake.Color()
-	Rings(pts, bulges or {})
+	Rings(pts, bulges or {}, R)
 	local tr = EvilSnake.Trig(SIDES)
 	local light = body.light
 	local nx, ny, nz = 0, 0, 1

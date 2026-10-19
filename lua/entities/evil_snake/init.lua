@@ -7,17 +7,13 @@ util.AddNetworkString("EvilSnakeBody")
 local Setting = EvilSnake.Setting
 
 local ASK_GAP = 0.2
-local BRAIN = 0.2
+local DECIDE = 0.2
 local LOSE = 1.25
 local STUCK = 0.3
 local STUCK_TIME = 1
 local DETOUR = 1.5
 local WANDER_TURN = 90
 local WANDER_TIME = { 3, 7 }
-local MAX_SEGMENTS = 254
-local MAX_MEALS = 32
-local PREY_SIZE = 40
-local PREY_SCALE = { 0.6, 1.6 }
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -33,10 +29,11 @@ function ENT:Initialize()
 	self:SetModel("models/hunter/blocks/cube025x025x025.mdl")
 	self:SetMoveType(MOVETYPE_NONE)
 	self:SetSolid(SOLID_BBOX)
-	local r = Setting("radius")
-	self:SetCollisionBounds(Vector(-r, -r, -r), Vector(r, r, r))
 	self:SetCollisionGroup(COLLISION_GROUP_DEBRIS)
-	self:SetSegments(math.Round(Setting("segments")))
+	self:SetGirth(1)
+	self:Bounds()
+	self.BaseSegments = math.Round(Setting("segments"))
+	self:SetSegments(self.BaseSegments)
 	local filter = function(e)
 		return e ~= self and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot() and e:GetClass() ~= "evil_snake"
 	end
@@ -46,7 +43,13 @@ function ENT:Initialize()
 	self.LastThink = CurTime()
 	self.Dirty = true
 	self.WanderYaw = self:GetAngles().y
-	self.Meals = {}
+	self.Stomach = EvilSnake.Stomach.New()
+	self.Stomach.onDigest = function(v) self:Absorb(v) end
+end
+
+function ENT:Bounds()
+	local r = self:Radius()
+	self:SetCollisionBounds(Vector(-r, -r, -r), Vector(r, r, r))
 end
 
 function ENT:UpdateTransmitState()
@@ -59,8 +62,9 @@ function ENT:SendBody(ply)
 	net.WriteEntity(self)
 	net.WriteUInt(#x, 8)
 	for _, p in ipairs(x) do net.WriteVector(p) end
-	net.WriteUInt(#self.Meals, 6)
-	for _, m in ipairs(self.Meals) do
+	local transit = self.Stomach.transit
+	net.WriteUInt(#transit, 6)
+	for _, m in ipairs(transit) do
 		net.WriteFloat(m.at)
 		net.WriteFloat(m.size)
 	end
@@ -73,7 +77,7 @@ end
 
 function ENT:Mouth()
 	local x = self.Chain.x
-	return x[1] + (x[1] - x[2]):GetNormalized() * Setting("radius")
+	return x[1] + (x[1] - x[2]):GetNormalized() * self:Radius()
 end
 
 function ENT:FindPrey(from)
@@ -87,34 +91,21 @@ function ENT:FindPrey(from)
 	return best
 end
 
-function ENT:Absorb(meal)
-	self:SetSegments(math.min(self:GetSegments() + meal.grow, MAX_SEGMENTS))
-end
-
-function ENT:Eat(ent)
-	local f = math.Clamp(ent:BoundingRadius() / PREY_SIZE, PREY_SCALE[1], PREY_SCALE[2])
-	if #self.Meals >= MAX_MEALS then self:Absorb(table.remove(self.Meals, 1)) end
-	self.Meals[#self.Meals + 1] = {
-		at = 0,
-		size = 1 + (Setting("bulge_size") - 1) * f,
-		grow = math.Round(Setting("growth") * f),
-	}
+function ENT:Grow()
+	local st = self.Stomach
+	local mass = st:Mass()
+	self:SetSegments(st:Segments(self.BaseSegments, mass))
+	local girth = st:Girth(mass)
+	if math.abs(girth - self.Chain.girth) < 1e-3 then return end
+	self:SetGirth(girth)
+	EvilSnake.Chain.Swell(self.Chain, girth)
+	self:Bounds()
 	self.Dirty = true
 end
 
-function ENT:Digest(dt)
-	local meals = self.Meals
-	if #meals == 0 then return end
-	local rate = Setting("bulge_speed") / Setting("segment_length") * dt
-	for i = #meals, 1, -1 do
-		local m = meals[i]
-		m.at = m.at + rate
-		if m.at >= self:GetSegments() then
-			table.remove(meals, i)
-			self:Absorb(m)
-		end
-	end
-	self.Dirty = true
+function ENT:Absorb(v)
+	self:Grow()
+	hook.Run("EvilSnakeAbsorbed", self, v)
 end
 
 function ENT:Swallow(now)
@@ -123,24 +114,26 @@ function ENT:Swallow(now)
 	local reach = Setting("bite_reach")
 	for _, ent in ipairs(ents.FindInSphere(mouth, reach)) do
 		if Edible(ent) and ent:NearestPoint(mouth):Distance(mouth) <= reach then
-			self:Eat(ent)
+			local v = self.Stomach:Swallow(ent)
+			self.Dirty = true
+			hook.Run("EvilSnakeSwallowed", self, v, ent)
 			ent:Remove()
 			if ent == self.Prey then
 				self.Prey = nil
-				self.NextBrain = now
+				self.NextDecide = now
 			end
 		end
 	end
 end
 
-function ENT:Brain(now)
+function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
 	local yaw = EvilSnake.Chain.HeadYaw(c)
 	if self.LastHead and c.speed > 0 then
 		local moved = self.LastHead:Distance(head)
-		if moved < c.speed * BRAIN * STUCK then
-			self.Stuck = (self.Stuck or 0) + BRAIN
+		if moved < c.speed * DECIDE * STUCK then
+			self.Stuck = (self.Stuck or 0) + DECIDE
 		else
 			self.Stuck = 0
 		end
@@ -181,17 +174,18 @@ function ENT:Think()
 	local dt = now - self.LastThink
 	self.LastThink = now
 	local c = self.Chain
-	if #c.x ~= self:GetSegments() + 1 then EvilSnake.Chain.Resize(c, self:GetSegments()) end
-	if now >= (self.NextBrain or 0) then
-		self.NextBrain = now + BRAIN
-		self:Brain(now)
+	if now >= (self.NextDecide or 0) then
+		self.NextDecide = now + DECIDE
+		self:Grow()
+		self:Decide(now)
 	end
+	if #c.x ~= self:GetSegments() + 1 then EvilSnake.Chain.Resize(c, self:GetSegments()) end
 	if EvilSnake.Chain.Update(c, dt) then
 		self:SetPos(c.x[1])
 		self.Dirty = true
 	end
 	self:Swallow(now)
-	self:Digest(dt)
+	if self.Stomach:Digest(dt, self:GetSegments()) then self.Dirty = true end
 	if self.Dirty and now >= (self.NextSend or 0) then
 		self.Dirty = false
 		self.NextSend = now + EvilSnake.SEND

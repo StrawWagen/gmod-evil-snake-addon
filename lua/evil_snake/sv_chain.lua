@@ -20,7 +20,7 @@ local UP = Vector(0, 0, 1)
 function Chain.New(joints, filter)
 	local c = {
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
-		mins = Vector(), maxs = Vector(), trail = {}, arcs = {}, speed = 0, phase = 0,
+		mins = Vector(), maxs = Vector(), trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1,
 	}
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
 	return c
@@ -31,7 +31,7 @@ local function Hull(c, from, to)
 end
 
 local function Size(c)
-	local r = Setting("radius") * HULL
+	local r = Setting("radius") * c.girth * HULL
 	c.mins:SetUnpacked(-r, -r, -r)
 	c.maxs:SetUnpacked(r, r, r)
 end
@@ -44,6 +44,20 @@ end
 function Chain.Drive(c, yaw, speed)
 	c.goal, c.speed = yaw, speed
 	if speed > 0 then c.awake, c.still = true, 0 end
+end
+
+function Chain.Swell(c, girth)
+	local lift = Setting("radius") * (girth - c.girth)
+	c.girth = girth
+	Size(c)
+	for i = 1, #c.x do c.cn[i], c.cd[i] = nil, nil end
+	c.awake, c.still = true, 0
+	if lift <= 0 then return end
+	local up = UP * lift
+	for i = 1, #c.x do
+		c.x[i] = c.x[i] + up
+		c.old[i] = c.old[i] + up
+	end
 end
 
 function Chain.Resize(c, count)

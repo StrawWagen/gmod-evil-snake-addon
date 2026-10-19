@@ -9,4 +9,9 @@ ENT.DisableDuplicator = true
 
 function ENT:SetupDataTables()
 	self:NetworkVar("Int", 0, "Segments")
+	self:NetworkVar("Float", 0, "Girth")
+end
+
+function ENT:Radius()
+	return EvilSnake.Setting("radius") * math.max(self:GetGirth(), 1)
 end
