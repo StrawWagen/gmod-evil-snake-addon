@@ -29,6 +29,11 @@ local TURN_SLOW = 0.35
 local PACE = 4
 local CRAWL = 1
 local MAX_BEND = 1.4
+local ESCAPE = {
+	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
+	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
+	Vector(0.7071, 0, 0.7071), Vector(-0.7071, 0, 0.7071), Vector(0, 0.7071, 0.7071), Vector(0, -0.7071, 0.7071),
+}
 
 local folds = {}
 
@@ -178,6 +183,20 @@ local function Contact(c, i, pos)
 	end
 end
 
+local function Unstick(c, i, pos)
+	if not Hull(c, i, pos, pos).StartSolid then return pos end
+	local reach = c.hull[i] * 2 + 1
+	local best, bestDist
+	for _, dir in ipairs(ESCAPE) do
+		local tr = Hull(c, i, pos + dir * reach, pos)
+		if tr.Hit and not tr.StartSolid then
+			local d = tr.HitPos:DistToSqr(pos)
+			if not bestDist or d < bestDist then best, bestDist = tr.HitPos, d end
+		end
+	end
+	return best
+end
+
 local function Climb(c, i, from, to, reached)
 	local height = Setting("step_height")
 	if height <= 0 then return end
@@ -209,8 +228,8 @@ local function Collide(c, i, from, to, along, gravity)
 	end
 	local tr = Hull(c, i, from, to)
 	if tr.StartSolid then
-		local free = Hull(c, i, to, to).StartSolid and from or to
-		c.cn[i], c.cd[i] = nil, nil
+		local free = Unstick(c, i, to) or Unstick(c, i, from) or from
+		Contact(c, i, free)
 		return free
 	end
 	local final, climbed = to, false

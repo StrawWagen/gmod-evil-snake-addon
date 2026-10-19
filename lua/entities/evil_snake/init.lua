@@ -52,6 +52,7 @@ function ENT:Initialize()
 	self:SetLength(self.BaseSegments)
 	local filter = function(e)
 		return e ~= self and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot() and e:GetClass() ~= "evil_snake"
+			and not e.EvilDowned
 	end
 	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter)
 	self.Chain = EvilSnake.Chain.New(joints, filter)
