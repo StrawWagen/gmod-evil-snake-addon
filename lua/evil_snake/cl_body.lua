@@ -2,53 +2,96 @@ EvilSnake = EvilSnake or {}
 local Body = {}
 EvilSnake.Body = Body
 
-Body.Material = CreateMaterial("evil_snake_body", "UnlitGeneric", {
-	["$basetexture"] = "vgui/white",
-	["$vertexcolor"] = 1,
-	["$nocull"] = 1,
-})
+local Smooth, Bright = EvilSnake.Smooth, EvilSnake.Bright
 
-Body.SEGMENTS = 10
-Body.SPACING = 10
+local skin = Material("evil_snake/skin.png", "noclamp smooth mips")
+if not skin:IsError() then EvilSnake.Material:SetTexture("$basetexture", skin:GetTexture("$basetexture")) end
+
+Body.SEGMENTS = 28
+Body.SPACING = 17
 
 local STEP = 24
-local DROP = 96
+local DROP = 120
 local SUB = 4
-local SIDES = 18
-local RADIUS = 3.2
-local HEAD_LENGTH = 11
-local MOUTH = 1.45
-local LIP = 1.2
+local SIDES = 20
+local RADIUS = 13
+local HEAD = 3
+local MOUTH = 1.35
+local NECK = 0.85
+local LIP = 0.35
 local LIP_IN = 0.8
-local NECK = 0.8
-local NOSE = 2
-local PAD = 16
-local TAIL_START = 0.45
-local FLAT = 0.8
-local HEAD_FLAT = 0.85
-local BELLY_FLAT = 0.5
-local FINE = 0.6
-local COARSE = 2
-local BACK = Vector(52, 58, 38)
-local BLOTCH = Vector(20, 22, 15)
-local BELLY = Vector(148, 136, 92)
-local BLOTCH_SPACING = 9
-local CHEVRON = 2.2
-local EYE_AT = 0.62
-local EYE_OUT = 0.8
-local EYE_UP = 0.55
-local EYE_RADIUS = 0.75
-local EYE_COLOR = Color(10, 8, 4)
+local TAIL_START = 0.3
+local TAIL_POW = 1.15
+local TAIL_TIP = 0.05
+local FLAT = 0.82
+local HEAD_FLAT = 0.8
+local BELLY_FLAT = 0.45
+local KEEL = 0.16
+local FINE = 0.15
+local COARSE = 0.32
+local PAD = 72
+local TILE_U = 1
+local TILE_V = 140
+local RIB_SPACING = 0.5
+local RIB = 0.05
+local LUMPS = { 5, 9 }
+local WAVE = 0.14
+local WAVE_WIDTH = 1.6
+local WAVE_SPEED = 55
+local WAVE_GAP = 0.5
+local BREATHE = 0.025
+local BREATHE_SPEED = 1.1
+local TUFTS = { 14, 22 }
+local TUFT = { 2, 6 }
+local TUFT_SPREAD = 0.008
+local CILIA_FROM = 0.06
+local CILIA_TO = 0.8
+local CILIA_SIDES = 4
+local CILIA_SUB = 2
+local CILIA_BEAT = 2.2
+local CILIA_WAVE = 0.55
+local CILIA_SWING = 0.55
+local TENDRILS = { 3, 5 }
+local TENDRIL_SIDES = 5
+local TENDRIL_SUB = 3
 
-local function Smooth(x)
-	x = math.Clamp(x, 0, 1)
-	return x * x * (3 - 2 * x)
-end
+local SKIN = Vector(66, 56, 64)
+local BELLY = Vector(168, 146, 140)
+local PALE = Vector(196, 184, 170)
+local VEIN = Vector(30, 12, 22)
+local BLUSH = Vector(140, 58, 66)
+local TIP = Vector(128, 72, 80)
 
-local function CatmullRom(p0, p1, p2, p3, t)
-	local t2 = t * t
-	local t3 = t2 * t
-	return (p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5
+function Body.Genes(seed)
+	local rand = EvilSnake.Rng(seed * 7 + 3)
+	local g = { phase = {}, lumps = {}, cilia = {}, tendrils = {} }
+	for i = 1, 8 do g.phase[i] = rand(0, math.pi * 2) end
+	g.rib = rand(0.85, 1.15)
+	g.tint = Vector(rand(0.88, 1.08), rand(0.9, 1.04), rand(0.9, 1.12))
+	for i = 1, math.floor(rand(LUMPS[1], LUMPS[2] + 1)) do
+		g.lumps[i] = {
+			at = rand(0.1, 0.8), theta = math.pi * 0.5 + rand(-1.7, 1.7), amp = rand(0.07, 0.22),
+			len = rand(0.6, 1.8) * RADIUS, width = rand(0.45, 1.1),
+		}
+	end
+	for _ = 1, math.floor(rand(TUFTS[1], TUFTS[2] + 1)) do
+		local at, theta = rand(CILIA_FROM, CILIA_TO), math.pi * 0.5 + rand(-1.1, 1.1)
+		for _ = 1, math.floor(rand(TUFT[1], TUFT[2] + 1)) do
+			g.cilia[#g.cilia + 1] = {
+				at = at + rand(-TUFT_SPREAD, TUFT_SPREAD), theta = theta + rand(-0.25, 0.25),
+				len = rand(0.45, 1.1), width = rand(0.06, 0.1), phase = rand(-0.6, 0.6), freq = rand(0.6, 1.4), drift = rand(0, 100),
+			}
+		end
+	end
+	table.sort(g.cilia, function(a, b) return a.at < b.at end)
+	local count = math.floor(rand(TENDRILS[1], TENDRILS[2] + 1))
+	for i = 1, count do
+		g.tendrils[i] = {
+			angle = (i - 1) / count * math.pi * 2 + rand(-0.4, 0.4), spread = rand(0.3, 0.8),
+			len = rand(1.4, 2.6), width = rand(0.05, 0.09), phase = rand(0, 100), freq = rand(0.5, 1.2),
+		}
+	end
+	return g
 end
 
 function Body.Layout(origin, yaw, filter)
@@ -74,13 +117,12 @@ function Body.Layout(origin, yaw, filter)
 end
 
 function Body.Bounds(ground)
-	local pad = PAD
 	local mins, maxs = Vector(ground[1]), Vector(ground[1])
 	for _, p in ipairs(ground) do
 		mins.x, mins.y, mins.z = math.min(mins.x, p.x), math.min(mins.y, p.y), math.min(mins.z, p.z)
 		maxs.x, maxs.y, maxs.z = math.max(maxs.x, p.x), math.max(maxs.y, p.y), math.max(maxs.z, p.z)
 	end
-	return mins - Vector(pad, pad, pad), maxs + Vector(pad, pad, pad)
+	return mins - Vector(PAD, PAD, PAD), maxs + Vector(PAD, PAD, PAD)
 end
 
 local function Spine(ground, normals)
@@ -91,7 +133,7 @@ local function Spine(ground, normals)
 		local p0, p1, p2, p3 = ground[math.max(i - 1, 1)], ground[i], ground[i + 1], ground[math.min(i + 2, n)]
 		for s = 0, SUB - 1 do
 			local t = s / SUB
-			local p = CatmullRom(p0, p1, p2, p3, t)
+			local p = EvilSnake.CatmullRom(p0, p1, p2, p3, t)
 			local k = #pts
 			if k > 0 then total = total + p:Distance(pts[k]) end
 			pts[k + 1], ups[k + 1], dist[k + 1] = p, LerpVector(t, normals[i], normals[i + 1]), total
@@ -104,7 +146,8 @@ local function Spine(ground, normals)
 end
 
 local function Profile(d, total)
-	local h = d / HEAD_LENGTH
+	local x = d / RADIUS
+	local h = x / HEAD
 	local w
 	if h < 0.4 then
 		w = MOUTH
@@ -113,9 +156,9 @@ local function Profile(d, total)
 	else
 		w = Lerp(Smooth((h - 1) / 1.5), NECK, 1)
 	end
-	w = w * Lerp(Smooth(d / LIP), LIP_IN, 1)
+	w = w * Lerp(Smooth(x / LIP), LIP_IN, 1)
 	local f = d / total
-	if f > TAIL_START then w = w * ((1 - f) / (1 - TAIL_START)) ^ 0.9 end
+	if f > TAIL_START then w = w * math.max(TAIL_TIP, ((1 - f) / (1 - TAIL_START)) ^ TAIL_POW) end
 	return RADIUS * w, RADIUS * w * Lerp(Smooth(h - 0.5), HEAD_FLAT, FLAT)
 end
 
@@ -134,95 +177,195 @@ local function Frame(spine, d, hint)
 	return center + up * (h * BELLY_FLAT), side, up, w, h, j, tangent
 end
 
-local AXES = { Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0), Vector(0, 0, 1), Vector(0, 0, -1) }
-local cube = { 0, 0, 0, 0, 0, 0 }
+local function Surface(base, side, up, w, h, theta)
+	local c, s = math.cos(theta), math.sin(theta)
+	local hs = s < 0 and h * BELLY_FLAT or h * (1 + KEEL * s ^ 6)
+	return base + side * (c * w) + up * (s * hs), (side * (c / w) + up * (s / hs)):GetNormalized()
+end
 
-function Body.SampleLight(pos)
-	for i, axis in ipairs(AXES) do
-		local c = render.ComputeLighting(pos, axis) + render.ComputeDynamicLighting(pos, axis)
-		cube[i] = (c.x + c.y + c.z) / 3
+local function Rib(x, total, g)
+	local fade = Smooth((x - HEAD) / 1.5) * Smooth((total / RADIUS - x) / 6)
+	local wave = 0.5 + 0.5 * math.cos((x / (RIB_SPACING * g.rib) + 0.3 * math.sin(x * 0.21 + g.phase[1])) * math.pi * 2)
+	return wave ^ 4 * fade
+end
+
+local function Lump(d, total, theta, g)
+	local sum = 0
+	for _, l in ipairs(g.lumps) do
+		local e = (d - l.at * total) / l.len
+		local a = math.abs((theta - l.theta + math.pi) % (math.pi * 2) - math.pi) / l.width
+		sum = sum + l.amp * math.exp(-e * e - a * a)
 	end
+	return sum
 end
 
-function Body.Bright(n)
-	local l = n.x * n.x * (n.x > 0 and cube[1] or cube[2])
-		+ n.y * n.y * (n.y > 0 and cube[3] or cube[4])
-		+ n.z * n.z * (n.z > 0 and cube[5] or cube[6])
-	return math.min(1.6, 0.08 + math.sqrt(l) * 1.3)
+local function Shade(x, theta, s, rib, lump, g)
+	local p = g.phase
+	local col = LerpVector(Smooth((-s - 0.1) / 0.4), SKIN, BELLY)
+	local mottle = 0.5 + 0.25 * (math.sin(x * 0.23 + theta + p[2]) + math.sin(x * 0.61 - theta * 2 + p[3]))
+	col = col * Lerp(mottle, 0.62, 1.15)
+	col = LerpVector(rib * 0.28 * Smooth(s * 1.5 + 0.2), col, PALE)
+	col = LerpVector(math.min(1, lump * 3), col, BLUSH)
+	local n = math.sin(x * 0.35 + 2.4 * math.sin(theta * 2 + p[4]) + 1.6 * math.sin(x * 0.13 + p[5]))
+	local vein = (1 - Smooth(math.abs(n) / 0.3)) * (0.25 + lump * 3)
+	col = LerpVector(math.min(0.85, vein), col, VEIN)
+	return Vector(col.x * g.tint.x, col.y * g.tint.y, col.z * g.tint.z)
 end
 
-local function Shade(d, c, s)
-	local belly = Smooth((-s - 0.15) / 0.35)
-	local phase = d / BLOTCH_SPACING * math.pi * 2 + math.abs(c) * CHEVRON
-	local blotch = Smooth((math.sin(phase) - 0.3) / 0.4) * Smooth((s + 0.3) / 0.5)
-	return LerpVector(belly, LerpVector(blotch, BACK, BLOTCH), BELLY)
-end
-
-local trig = {}
-for k = 0, SIDES - 1 do
-	local a = k / SIDES * math.pi * 2
-	trig[k] = { math.cos(a), math.sin(a) }
-end
-
-local function Ring(spine, d, hint)
-	local base, side, up, w, h, j = Frame(spine, d, hint)
-	Body.SampleLight(base + up * h)
-	local ring = {}
-	for k = 0, SIDES - 1 do
-		local c, s = trig[k][1], trig[k][2]
-		local hs = s < 0 and h * BELLY_FLAT or h
-		local normal = (side * (c / math.max(w, 0.01)) + up * (s / math.max(hs, 0.01))):GetNormalized()
-		ring[k] = { base + side * (c * w) + up * (s * hs), Shade(d, c, s) * Body.Bright(normal) }
+function Body.Build(ground, normals, g)
+	local spine = Spine(ground, normals)
+	local total = spine.total
+	local tr = EvilSnake.Trig(SIDES)
+	local shape = {
+		total = total, count = 0, d = {}, amp = {}, bx = {}, by = {}, bz = {},
+		ox = {}, oy = {}, oz = {}, cr = {}, cg = {}, cb = {},
+		cilia = {}, tendrils = {},
+	}
+	local hint, d = 1, 0
+	while true do
+		local base, side, up, w, h, j = Frame(spine, d, hint)
+		hint = j
+		EvilSnake.SampleLight(base + up * h)
+		local n = shape.count + 1
+		shape.count = n
+		shape.d[n] = d
+		shape.bx[n], shape.by[n], shape.bz[n] = base.x, base.y, base.z
+		local x = d / RADIUS
+		local rib = Rib(x, total, g)
+		for k = 0, SIDES - 1 do
+			local theta = k / SIDES * math.pi * 2
+			local s = tr.s[k]
+			local pos, normal = Surface(base, side, up, w, h, theta)
+			local lump = Lump(d, total, theta, g)
+			local grow = (1 + lump) * (1 + RIB * rib * math.max(0, s + 0.3))
+			local off = (pos - base) * grow
+			local col = Shade(x, theta, s, rib, lump, g) * Bright(normal.x, normal.y, normal.z)
+			local i = (n - 1) * SIDES + k + 1
+			shape.ox[i], shape.oy[i], shape.oz[i] = off.x, off.y, off.z
+			shape.cr[i], shape.cg[i], shape.cb[i] = col.x, col.y, col.z
+		end
+		if d >= total then break end
+		local fine = x < LIP * 2 or d > total * 0.9
+		d = math.min(d + (fine and FINE or COARSE) * RADIUS, total)
 	end
-	return ring, j
+
+	local mouth, side, up, mw, mh, _, tangent = Frame(spine, 0)
+	local below = mh * BELLY_FLAT
+	shape.head = { pos = mouth, fwd = -tangent, up = up, side = side, w = mw, h = mh, below = below, floor = mouth - up * below }
+	shape.mid = Frame(spine, total * 0.4) + up * mh
+
+	hint = 1
+	for i, c in ipairs(g.cilia) do
+		local cd = c.at * total
+		local base, cside, cup, w, h, j, ct = Frame(spine, cd, hint)
+		hint = j
+		local pos, normal = Surface(base, cside, cup, w, h, c.theta)
+		pos = pos + normal * (Lump(cd, total, c.theta, g) * w)
+		local scale = w / RADIUS
+		shape.cilia[i] = {
+			pos = pos, n = normal, t = ct, b = normal:Cross(ct), d = cd, len = c.len * RADIUS * scale,
+			width = c.width * RADIUS * scale, phase = c.phase, freq = c.freq, drift = c.drift, points = {},
+		}
+	end
+
+	local tail, tside, tup, tw, _, _, tt = Frame(spine, total)
+	for i, t in ipairs(g.tendrils) do
+		local o = tside * math.cos(t.angle) + tup * math.sin(t.angle)
+		shape.tendrils[i] = {
+			pos = tail + o * tw, dir = (tt + o * t.spread):GetNormalized(), o = o, len = t.len * RADIUS,
+			width = t.width * RADIUS, phase = t.phase, freq = t.freq, points = {},
+		}
+	end
+	return shape
 end
 
-function Body.Vert(v)
-	mesh.Position(v[1])
-	mesh.TexCoord(0, 0, 0)
-	mesh.Color(math.min(255, v[2].x), math.min(255, v[2].y), math.min(255, v[2].z), 255)
+local scratch = Vector()
+
+local function Vert(shape, j, i, a, u, v)
+	scratch:SetUnpacked(shape.bx[j] + shape.ox[i] * a, shape.by[j] + shape.oy[i] * a, shape.bz[j] + shape.oz[i] * a)
+	mesh.Position(scratch)
+	mesh.TexCoord(0, u, v)
+	mesh.Color(math.min(255, shape.cr[i]), math.min(255, shape.cg[i]), math.min(255, shape.cb[i]), 255)
 	mesh.AdvanceVertex()
 end
 
-function Body.Build(ground, normals)
-	local spine = Spine(ground, normals)
-	local total = spine.total
-	local rings, hint, d = {}, 1, 0
-	while true do
-		rings[#rings + 1], hint = Ring(spine, d, hint)
-		if d >= total then break end
-		local fine = d < LIP * 2 or d > total - NOSE * 2
-		d = math.min(d + (fine and FINE or COARSE), total)
+local function Swell(shape, now)
+	local total, amp = shape.total, shape.amp
+	local width = WAVE_WIDTH * RADIUS
+	local cycle = total + width * 4
+	local lead = total + width * 2 - (now * WAVE_SPEED) % cycle
+	local trail = lead + cycle * WAVE_GAP
+	if trail > total + width * 2 then trail = trail - cycle end
+	for j = 1, shape.count do
+		local d = shape.d[j]
+		local e1, e2 = (d - lead) / width, (d - trail) / width
+		local taper = Smooth(d / (HEAD * RADIUS)) * Smooth((total - d) / (RADIUS * 2))
+		amp[j] = 1 + BREATHE * math.sin(now * BREATHE_SPEED - d / RADIUS * 0.4)
+			+ WAVE * taper * (math.exp(-e1 * e1) + 0.7 * math.exp(-e2 * e2))
 	end
+end
 
-	local obj = Mesh(Body.Material)
-	mesh.Begin(obj, MATERIAL_QUADS, (#rings - 1) * SIDES)
-	for r = 1, #rings - 1 do
-		local a, b = rings[r], rings[r + 1]
+local function CiliaRadius(f, c)
+	return c.width * (1 - 0.85 * f)
+end
+
+local function CiliaColor(f)
+	local k = Smooth(f * 1.2)
+	return Lerp(k, SKIN.x, TIP.x), Lerp(k, SKIN.y, TIP.y), Lerp(k, SKIN.z, TIP.z)
+end
+
+local function DrawCilia(shape, now)
+	for _, c in ipairs(shape.cilia) do
+		local beat = math.sin(now * CILIA_BEAT - c.d / RADIUS * CILIA_WAVE + c.phase)
+		local pts = c.points
+		for i = 1, 4 do
+			local f = (i - 1) / 3
+			local lean = beat * CILIA_SWING * f ^ 1.5
+			local curl = math.sin(now * 0.9 * c.freq + c.drift + i) * 0.2 * f
+			pts[i] = c.pos + c.n * (c.len * f * (1 - math.abs(lean) * 0.4)) + c.t * (c.len * lean) + c.b * (c.len * curl)
+		end
+		EvilSnake.Tube(pts, CILIA_SIDES, CILIA_SUB, CiliaRadius, CiliaColor, c)
+	end
+end
+
+local function TendrilRadius(f, t)
+	return t.width * (1 - 0.9 * f ^ 0.8)
+end
+
+local function DrawTendrils(shape, now)
+	for _, t in ipairs(shape.tendrils) do
+		local pts = t.points
+		for i = 1, 5 do
+			local f = (i - 1) / 4
+			local wob = EvilSnake.Wobble(now, t.phase + i * 1.3, t.freq) * (t.len * 0.12 * f)
+			pts[i] = t.pos + t.dir * (t.len * f) + t.o * (t.len * 0.25 * f * f) + wob
+		end
+		EvilSnake.Tube(pts, TENDRIL_SIDES, TENDRIL_SUB, TendrilRadius, CiliaColor, t)
+	end
+end
+
+function Body.Draw(shape, now, near)
+	render.SetMaterial(EvilSnake.Material)
+	Swell(shape, now)
+	local amp, d = shape.amp, shape.d
+	mesh.Begin(MATERIAL_QUADS, (shape.count - 1) * SIDES)
+	for j = 1, shape.count - 1 do
+		local a, b = amp[j], amp[j + 1]
+		local v0, v1 = d[j] / TILE_V, d[j + 1] / TILE_V
+		local r0, r1 = (j - 1) * SIDES, j * SIDES
 		for k = 0, SIDES - 1 do
 			local k2 = (k + 1) % SIDES
-			Body.Vert(a[k])
-			Body.Vert(a[k2])
-			Body.Vert(b[k2])
-			Body.Vert(b[k])
+			local u0, u1 = k / SIDES * TILE_U, (k + 1) / SIDES * TILE_U
+			Vert(shape, j, r0 + k + 1, a, u0, v0)
+			Vert(shape, j, r0 + k2 + 1, a, u1, v0)
+			Vert(shape, j + 1, r1 + k2 + 1, b, u1, v1)
+			Vert(shape, j + 1, r1 + k + 1, b, u0, v1)
 		end
 	end
 	mesh.End()
 
-	local mouth, side, up, mw, mh, _, tangent = Frame(spine, 0)
-	local below = mh * BELLY_FLAT
-	local head = { pos = mouth, fwd = -tangent, up = up, side = side, w = mw, h = mh, below = below, floor = mouth - up * below }
-	local base, eside, eup, w, h = Frame(spine, HEAD_LENGTH * EYE_AT)
-	local eyes = {}
-	for _, dir in ipairs({ 1, -1 }) do
-		eyes[#eyes + 1] = base + eside * (dir * w * EYE_OUT) + eup * (h * EYE_UP)
-	end
-	return obj, eyes, head
-end
-
-function Body.Draw(obj, eyes)
-	render.SetMaterial(Body.Material)
-	obj:Draw()
-	render.SetColorMaterial()
-	for _, pos in ipairs(eyes) do render.DrawSphere(pos, EYE_RADIUS, 10, 10, EYE_COLOR) end
+	if not near then return end
+	EvilSnake.SampleLight(shape.mid)
+	DrawCilia(shape, now)
+	DrawTendrils(shape, now)
 end

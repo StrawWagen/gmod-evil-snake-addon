@@ -14,7 +14,8 @@ end
 
 function ENT:Initialize()
 	self:SetModel("models/hunter/blocks/cube025x025x025.mdl")
-	self:PhysicsInitBox(Vector(-5, -5, 0), Vector(5, 5, 6))
+	self:PhysicsInitBox(Vector(-12, -12, 0), Vector(12, 12, 20))
+	self:SetSeed(math.random(1, 2147483646))
 	self:SetCollisionGroup(COLLISION_GROUP_DEBRIS)
 	local phys = self:GetPhysicsObject()
 	if IsValid(phys) then phys:EnableMotion(false) end

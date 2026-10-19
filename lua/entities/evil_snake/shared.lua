@@ -6,3 +6,7 @@ ENT.Spawnable = true
 ENT.RenderGroup = RENDERGROUP_OPAQUE
 ENT.DoNotDuplicate = true
 ENT.DisableDuplicator = true
+
+function ENT:SetupDataTables()
+	self:NetworkVar("Int", 0, "Seed")
+end
