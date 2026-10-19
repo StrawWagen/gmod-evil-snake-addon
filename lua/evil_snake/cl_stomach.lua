@@ -4,6 +4,10 @@ local TIMEOUT = 2
 local REACH = 4096
 local MIN_PICK = 6
 local ROW = 16
+local FOV = 30
+local FIT = 1.08
+local MODEL_TALL = { 180, 360 }
+local INFO_TALL = 390
 
 local TEXT = Color(230, 230, 230)
 local DIM = Color(160, 160, 160)
@@ -34,7 +38,8 @@ local function Display(v)
 end
 
 local function Clock(t)
-	return string.FormattedTime(math.max(t, 0), "%02i:%02i:%02i")
+	local s = math.floor(math.max(t, 0))
+	return ("%d:%02d:%02d"):format(math.floor(s / 3600), math.floor(s / 60) % 60, s % 60)
 end
 
 local function Status(v, progress)
@@ -202,6 +207,22 @@ function View:PaintInfo(w, h)
 	end
 end
 
+function View:Fit()
+	local panel = self.model
+	local e = panel.Entity
+	if not IsValid(e) then return end
+	local mn, mx = e:GetRenderBounds()
+	local center = (mn + mx) * 0.5
+	local height = mx.z - mn.z
+	local width = math.sqrt((mx.x - mn.x) ^ 2 + (mx.y - mn.y) ^ 2)
+	local w, h = math.max(panel:GetWide(), 1), math.max(panel:GetTall(), 1)
+	local half = math.tan(math.rad(FOV / 2))
+	local dist = math.max(height * 0.5 / (half * math.min(1, h / w)), width * 0.5 / (half * math.min(1, w / h))) * FIT
+	panel:SetFOV(FOV)
+	panel:SetLookAt(center)
+	panel:SetCamPos(center + Vector(dist, 0, dist * 0.1))
+end
+
 function View:Select(n)
 	self.selected = n
 	local v = self.victims[n]
@@ -217,12 +238,7 @@ function View:Select(n)
 	local seq = e:LookupSequence("idle_all_01")
 	if seq <= 0 then seq = e:SelectWeightedSequence(ACT_IDLE) end
 	if seq > 0 then e:ResetSequence(seq) end
-	local mn, mx = e:GetRenderBounds()
-	local center = (mn + mx) * 0.5
-	local size = mn:Distance(mx)
-	panel:SetFOV(40)
-	panel:SetLookAt(center)
-	panel:SetCamPos(center + Vector(size, size * 0.4, size * 0.3))
+	self:Fit()
 end
 
 function EvilSnake.OpenStomach(ent)
@@ -230,7 +246,7 @@ function EvilSnake.OpenStomach(ent)
 	local frame = vgui.Create("DFrame")
 	current = frame
 	frame:SetTitle("Evil snake stomach")
-	frame:SetSize(math.min(1040, ScrW() - 40), math.min(660, ScrH() - 40))
+	frame:SetSize(math.min(1040, ScrW() - 40), math.min(780, ScrH() - 40))
 	frame:SetSizable(true)
 	frame:SetMinWidth(720)
 	frame:SetMinHeight(480)
@@ -255,13 +271,17 @@ function EvilSnake.OpenStomach(ent)
 
 	local model = side:Add("DModelPanel")
 	model:Dock(TOP)
-	model:SetTall(170)
+	model:SetTall(MODEL_TALL[2])
 	model:SetVisible(false)
 	model.LayoutEntity = function(p, e)
 		e:SetAngles(Angle(0, RealTime() * 30 % 360, 0))
 		p:RunAnimation()
 	end
+	model.PerformLayout = function() view:Fit() end
 	view.model = model
+	side.PerformLayout = function(_, w, h)
+		model:SetTall(math.Clamp(h - INFO_TALL, MODEL_TALL[1], MODEL_TALL[2]))
+	end
 
 	local info = side:Add("DPanel")
 	info:Dock(FILL)
