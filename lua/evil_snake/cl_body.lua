@@ -11,7 +11,6 @@ local CAP = 6
 local PAD = 4
 local RELIGHT = 3
 local BATCH = 100
-local COLOR = Vector(150, 110, 104)
 
 function Body.New()
 	return { light = {}, lit = 0 }
@@ -23,7 +22,7 @@ function Body.Bounds(pts)
 		mins.x, mins.y, mins.z = min(mins.x, p.x), min(mins.y, p.y), min(mins.z, p.z)
 		maxs.x, maxs.y, maxs.z = max(maxs.x, p.x), max(maxs.y, p.y), max(maxs.z, p.z)
 	end
-	local pad = EvilSnake.RADIUS * 2 + PAD
+	local pad = EvilSnake.Setting("radius") * 2 + PAD
 	return mins - Vector(pad, pad, pad), maxs + Vector(pad, pad, pad)
 end
 
@@ -49,7 +48,7 @@ local function Ring(x, y, z, dx, dy, dz, w, ax, joint)
 end
 
 local function Cap(p, dx, dy, dz, joint, outward)
-	local R = EvilSnake.RADIUS
+	local R = EvilSnake.Setting("radius")
 	for k = 1, CAP do
 		local a = (outward and k or CAP + 1 - k) / CAP * math.pi * 0.5
 		local s = sin(a)
@@ -70,7 +69,7 @@ local function Rings(pts)
 	local m = #samples
 	local first = (samples[2] - samples[1]):GetNormalized()
 	local last = (samples[m] - samples[m - 1]):GetNormalized()
-	local R = EvilSnake.RADIUS
+	local R = EvilSnake.Setting("radius")
 	Cap(samples[1], first.x, first.y, first.z, 1, false)
 	for j = 1, m do
 		local d = (samples[min(j + 1, m)] - samples[max(j - 1, 1)]):GetNormalized()
@@ -84,22 +83,24 @@ end
 
 local vx, vy, vz, vl = {}, {}, {}, {}
 local scratch = Vector()
+local cr, cg, cb = 0, 0, 0
 
 local function Vert(i)
 	scratch:SetUnpacked(vx[i], vy[i], vz[i])
 	mesh.Position(scratch)
 	mesh.TexCoord(0, 0, 0)
 	local l = vl[i]
-	mesh.Color(min(255, COLOR.x * l), min(255, COLOR.y * l), min(255, COLOR.z * l), 255)
+	mesh.Color(min(255, cr * l), min(255, cg * l), min(255, cb * l), 255)
 	mesh.AdvanceVertex()
 end
 
 function Body.Draw(body, pts)
 	if #pts < 2 then return end
 	Relight(body, pts)
+	cr, cg, cb = EvilSnake.Color()
 	Rings(pts)
 	local tr = EvilSnake.Trig(SIDES)
-	local R = EvilSnake.RADIUS
+	local R = EvilSnake.Setting("radius")
 	local light = body.light
 	local nx, ny, nz = 0, 0, 1
 	for j = 1, count do

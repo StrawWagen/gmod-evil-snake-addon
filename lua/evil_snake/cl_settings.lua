@@ -16,6 +16,14 @@ local function Settled(s)
 	return RealTime() > (s.pending or 0)
 end
 
+local function Pack(c)
+	return math.Round(c.r) * 65536 + math.Round(c.g) * 256 + math.Round(c.b)
+end
+
+local function Current()
+	return Color(EvilSnake.Color())
+end
+
 local function Admin(control)
 	local ply = LocalPlayer()
 	local admin = IsValid(ply) and ply:IsSuperAdmin()
@@ -26,7 +34,20 @@ local function Build(panel)
 	for _, s in ipairs(EvilSnake.SETTINGS) do
 		local cv = GetConVar(s.convar)
 		local control
-		if s.max == 1 and not s.decimals then
+		if s.color then
+			panel:Help(s.label)
+			control = vgui.Create("DColorMixer")
+			control:SetAlphaBar(false)
+			control:SetTall(180)
+			panel:AddItem(control)
+			control:SetColor(Current())
+			control.ValueChanged = function(_, c) Send(s, Pack(c)) end
+			control.Think = function(self)
+				local ply = LocalPlayer()
+				self:SetMouseInputEnabled(IsValid(ply) and ply:IsSuperAdmin())
+				if Settled(s) and Pack(self:GetColor()) ~= cv:GetInt() then self:SetColor(Current()) end
+			end
+		elseif s.max == 1 and not s.decimals then
 			control = panel:CheckBox(s.label)
 			control:SetChecked(cv:GetBool())
 			control.OnChange = function(_, on) Send(s, on and 1 or 0) end
@@ -43,7 +64,7 @@ local function Build(panel)
 				if Settled(s) and not self:IsEditing() and math.abs(self:GetValue() - cv:GetFloat()) > 1e-3 then self:SetValue(cv:GetFloat()) end
 			end
 		end
-		control:SetTooltip(s.help)
+		if s.help then control:SetTooltip(s.help) end
 	end
 	local reset = panel:Button("Reset to defaults")
 	reset.DoClick = function()
