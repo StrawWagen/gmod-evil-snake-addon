@@ -71,6 +71,7 @@ function ENT:SendBody(ply)
 	local x = self.Chain.x
 	net.Start("EvilSnakeBody")
 	net.WriteEntity(self)
+	net.WriteDouble(CurTime() - self.Chain.acc)
 	net.WriteUInt(#x, 8)
 	for _, p in ipairs(x) do net.WriteVector(p) end
 	local transit = self.Stomach.transit

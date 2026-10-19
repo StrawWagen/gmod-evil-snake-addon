@@ -13,25 +13,65 @@ local SLITHER_GAP = 0.1
 local SLITHER_REST = 1
 local SLITHER_LEVEL = 75
 local HEAVIEST = 8
+local DELAY = EvilSnake.SEND * 2
+local GAP = EvilSnake.SEND * 3
+local KEEP = 8
+local DRIFT = 0.05
+
+local min = math.min
 
 net.Receive("EvilSnakeBody", function()
 	local ent = net.ReadEntity()
+	local t = net.ReadDouble()
 	local pts, meals = {}, {}
 	for i = 1, net.ReadUInt(8) do pts[i] = net.ReadVector() end
 	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat() } end
-	if IsValid(ent) and ent.Snapshot then ent:Snapshot(pts, meals) end
+	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals) end
 end)
 
 function ENT:Initialize()
 	self.Body = EvilSnake.Body.New()
 	self.Bulges = {}
+	self.Snaps = self.Snaps or {}
 end
 
-function ENT:Snapshot(pts, meals)
-	self.From = self.Pose and #self.Pose == #pts and self.Pose or pts
-	self.To = pts
-	self.Meals = meals
-	self.Since = RealTime()
+function ENT:Snapshot(t, pts, meals)
+	local snaps = self.Snaps or {}
+	self.Snaps = snaps
+	local d, off = RealTime() - t, self.Offset
+	self.Offset = (not off or d < off or d - off > GAP) and d or off + (d - off) * DRIFT
+	local last = snaps[#snaps]
+	if last then
+		if t <= last.t then return end
+		if t - last.t > GAP then
+			snaps[#snaps + 1] = { t = t - EvilSnake.SEND, pts = last.pts, meals = last.meals, fed = last.fed }
+		end
+	end
+	snaps[#snaps + 1] = { t = t, pts = pts, meals = meals, fed = t }
+	while #snaps > KEEP do table.remove(snaps, 1) end
+end
+
+local function Sample(snaps, rt)
+	local n = #snaps
+	if rt <= snaps[1].t then return snaps[1].pts, snaps[1] end
+	if rt >= snaps[n].t then return snaps[n].pts, snaps[n] end
+	local k = n - 1
+	while snaps[k].t > rt do k = k - 1 end
+	local a, b = snaps[k], snaps[k + 1]
+	local p, q = snaps[k - 1] or a, snaps[k + 2] or b
+	local h = b.t - a.t
+	local u = (rt - a.t) / h
+	local u2, u3 = u * u, u * u * u
+	local h00, h01 = 2 * u3 - 3 * u2 + 1, 3 * u2 - 2 * u3
+	local h10, h11 = (u3 - 2 * u2 + u) * h / (b.t - p.t), (u3 - u2) * h / (q.t - a.t)
+	local A, B, P, Q = a.pts, b.pts, p.pts, q.pts
+	local na, np, nq = #A, #P, #Q
+	local pose = {}
+	for i = 1, #B do
+		local pa, pb = A[min(i, na)], B[i]
+		pose[i] = pa * h00 + pb * h01 + (pb - P[min(i, np)]) * h10 + (Q[min(i, nq)] - pa) * h11
+	end
+	return pose, a
 end
 
 function ENT:Slither(now)
@@ -74,7 +114,8 @@ end
 function ENT:Think()
 	local now = RealTime()
 	self:Slither(now)
-	if not self.To then
+	local snaps = self.Snaps
+	if not snaps or #snaps == 0 then
 		if now >= (self.NextAsk or 0) then
 			self.NextAsk = now + ASK
 			net.Start("EvilSnakeBody")
@@ -83,15 +124,13 @@ function ENT:Think()
 		end
 		return
 	end
-	local t = math.Clamp((now - self.Since) / EvilSnake.SEND, 0, 1)
-	local from, to = self.From, self.To
-	local pose = {}
-	for i, p in ipairs(to) do pose[i] = t >= 1 and p or LerpVector(t, from[i], p) end
+	local rt = now - self.Offset - DELAY
+	local pose, snap = Sample(snaps, rt)
 	self.Pose = pose
 	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
-	local ahead = (now - self.Since) * EvilSnake.Setting("bulge_speed") / self.Link
+	local ahead = math.max(rt - snap.fed, 0) * EvilSnake.Setting("bulge_speed") / self.Link
 	local bulges, fattest = {}, 1
-	for i, m in ipairs(self.Meals) do
+	for i, m in ipairs(snap.meals) do
 		bulges[i] = { at = math.min(m.at + ahead, #pose - 1), size = m.size }
 		fattest = math.max(fattest, m.size)
 	end
