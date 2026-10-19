@@ -40,7 +40,8 @@ function ENT:Think()
 	local pose = {}
 	for i, p in ipairs(to) do pose[i] = t >= 1 and p or LerpVector(t, from[i], p) end
 	self.Pose = pose
-	local ahead = (now - self.Since) * EvilSnake.Setting("bulge_speed") / EvilSnake.Setting("segment_length")
+	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
+	local ahead = (now - self.Since) * EvilSnake.Setting("bulge_speed") / self.Link
 	local bulges, fattest = {}, 1
 	for i, m in ipairs(self.Meals) do
 		bulges[i] = { at = math.min(m.at + ahead, #pose - 1), size = m.size }
@@ -51,5 +52,5 @@ function ENT:Think()
 end
 
 function ENT:Draw()
-	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius()) end
+	if self.Pose then EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius(), self.Link) end
 end

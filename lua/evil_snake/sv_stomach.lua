@@ -65,14 +65,14 @@ function Stomach:Swallow(ent)
 	return v
 end
 
-function Stomach:Digest(dt, length)
+function Stomach:Digest(dt, links, link)
 	local transit = self.transit
 	if #transit == 0 then return false end
-	local rate = Setting("bulge_speed") / Setting("segment_length") * dt
+	local rate = Setting("bulge_speed") / link * dt
 	for i = #transit, 1, -1 do
 		local m = transit[i]
 		m.at = m.at + rate
-		if m.at >= length then self:Settle(table.remove(transit, i).victim) end
+		if m.at >= links then self:Settle(table.remove(transit, i).victim) end
 	end
 	return true
 end
@@ -89,8 +89,16 @@ function Stomach:Mass()
 	return mass
 end
 
-function Stomach:Segments(base, mass)
-	return math.Clamp(base + math.Round(Setting("growth") * (mass or self:Mass())), 1, MAX_SEGMENTS)
+function Stomach:Eating(links)
+	local mass = 0
+	for _, m in ipairs(self.transit) do
+		mass = mass + m.victim.mass * math.Clamp(m.at / links, 0, 1)
+	end
+	return mass
+end
+
+function Stomach:Length(base, mass)
+	return math.Clamp(base + Setting("growth") * (mass or self:Mass()), 1, MAX_SEGMENTS)
 end
 
 function Stomach:Girth(mass)

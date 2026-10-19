@@ -24,3 +24,15 @@ function EvilSnake.Layout(origin, yaw, count, filter)
 	end
 	return joints
 end
+
+function EvilSnake.Shape()
+	local tail = math.Clamp(EvilSnake.Setting("tail_length"), 0.01, 1)
+	return 1 / math.max(EvilSnake.Setting("head_size"), 1), tail
+end
+
+function EvilSnake.Profile(t, body, tail)
+	local start = 1 - tail
+	local s = start > 0 and 1 - math.min(t / start, 1) or 0
+	local u = math.max(0, (t - start) / tail)
+	return (body + (1 - body) * s * s) * (1 - u * u)
+end

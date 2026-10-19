@@ -22,8 +22,8 @@ concommand.Add("evil_snake_mind", function(ply)
 		for _, v in ipairs(st.victims) do
 			if v.digested then digested = digested + 1 end
 		end
-		Say(ply, ("evil_snake %d: %d eaten, %d digested, mass %.2f, %d segments, girth %.2f, brainpower %.2f, level %.2f")
-			:format(ent:EntIndex(), st:Count(), digested, st:Mass(), ent:GetSegments(), ent:GetGirth(), mind.power, mind:Level()))
+		Say(ply, ("evil_snake %d: %d eaten, %d digested, mass %.2f, %.1f segments, girth %.2f, brainpower %.2f, level %.2f")
+			:format(ent:EntIndex(), st:Count(), digested, st:Mass(), ent:GetLength(), ent:GetGirth(), mind.power, mind:Level()))
 		local knows = {}
 		for _, aspect in ipairs(EvilSnake.ASPECTS) do
 			knows[#knows + 1] = ("%s %.2f"):format(aspect, mind:Knows(aspect))

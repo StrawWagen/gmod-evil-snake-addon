@@ -15,25 +15,50 @@ local PROBE = 1
 local FLOOR = 0.7
 local TRAIL_GAP = 4
 local REBASE = 2
+local TIP = 0.15
 local UP = Vector(0, 0, 1)
 
 function Chain.New(joints, filter)
 	local c = {
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
-		mins = Vector(), maxs = Vector(), trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1,
+		mins = Vector(), maxs = Vector(), hull = {}, trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1, stretch = 1,
 	}
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
 	return c
 end
 
-local function Hull(c, from, to)
+local function Hull(c, i, from, to)
+	local r = c.hull[i]
+	c.mins:SetUnpacked(-r, -r, -r)
+	c.maxs:SetUnpacked(r, r, r)
 	return util.TraceHull({ start = from, endpos = to, mins = c.mins, maxs = c.maxs, mask = MASK_SOLID, filter = c.filter })
 end
 
 local function Size(c)
 	local r = Setting("radius") * c.girth * HULL
-	c.mins:SetUnpacked(-r, -r, -r)
-	c.maxs:SetUnpacked(r, r, r)
+	local body, tail = EvilSnake.Shape()
+	local n = #c.x
+	for i = 1, n do
+		local h = r * math.max(EvilSnake.Profile((i - 1) / math.max(n - 1, 1), body, tail), TIP)
+		local grow = h - (c.hull[i] or h)
+		if grow > 0 then
+			local normal = c.cn[i]
+			local lift = grow
+			if normal then
+				local reach = math.abs(normal.x) + math.abs(normal.y) + normal.z
+				lift = grow * reach / math.max(normal.z, 0.3)
+				c.cd[i] = c.cd[i] + grow * reach
+			end
+			c.x[i] = c.x[i] + UP * lift
+			c.old[i] = c.old[i] + UP * lift
+		end
+		c.hull[i] = h
+	end
+	for i = n + 1, #c.hull do c.hull[i] = nil end
+end
+
+function Chain.Link(c)
+	return Setting("segment_length") * c.stretch
 end
 
 function Chain.HeadYaw(c)
@@ -47,21 +72,12 @@ function Chain.Drive(c, yaw, speed)
 end
 
 function Chain.Swell(c, girth)
-	local lift = Setting("radius") * (girth - c.girth)
 	c.girth = girth
 	Size(c)
-	for i = 1, #c.x do c.cn[i], c.cd[i] = nil, nil end
 	c.awake, c.still = true, 0
-	if lift <= 0 then return end
-	local up = UP * lift
-	for i = 1, #c.x do
-		c.x[i] = c.x[i] + up
-		c.old[i] = c.old[i] + up
-	end
 end
 
-function Chain.Resize(c, count)
-	Size(c)
+local function Resize(c, count)
 	local x, old = c.x, c.old
 	while #x > count + 1 do
 		local n = #x
@@ -70,10 +86,18 @@ function Chain.Resize(c, count)
 	while #x < count + 1 do
 		local n = #x
 		local dir = n > 1 and (x[n] - x[n - 1]):GetNormalized() or Vector(1, 0, 0)
-		local tr = Hull(c, x[n], x[n] + dir * Setting("segment_length"))
+		Size(c)
+		local tr = Hull(c, n, x[n], x[n] + dir * Chain.Link(c))
 		x[n + 1], old[n + 1] = Vector(tr.HitPos), Vector(tr.HitPos)
 	end
+	Size(c)
 	c.awake, c.still, c.driving = true, 0, false
+end
+
+function Chain.Fit(c, length)
+	local count = math.max(1, math.Round(length))
+	c.stretch = length / count
+	if #c.x ~= count + 1 then Resize(c, count) end
 end
 
 local function Reseed(c)
@@ -94,7 +118,7 @@ local function Record(c, head)
 	local gap = head:Distance(trail[last])
 	if gap < TRAIL_GAP then return end
 	trail[last + 1], arcs[last + 1] = Vector(head), arcs[last] + gap
-	local keep = arcs[last + 1] - (#c.x + 2) * Setting("segment_length")
+	local keep = arcs[last + 1] - (#c.x + 2) * Chain.Link(c)
 	while #arcs > 2 and arcs[2] < keep do
 		table.remove(trail, 1)
 		table.remove(arcs, 1)
@@ -104,7 +128,7 @@ end
 local function Follow(c, p, amount)
 	local trail, arcs = c.trail, c.arcs
 	local last = #trail
-	local link = Setting("segment_length")
+	local link = Chain.Link(c)
 	local head = arcs[last] + p[1]:Distance(trail[last])
 	local k = last
 	for i = 2, #p do
@@ -131,7 +155,7 @@ local function Grip(v, amount)
 end
 
 local function Contact(c, i, pos)
-	local tr = Hull(c, pos, pos - UP * PROBE)
+	local tr = Hull(c, i, pos, pos - UP * PROBE)
 	if tr.Hit and not tr.StartSolid and tr.HitNormal.z > 0 then
 		c.cn[i], c.cd[i] = tr.HitNormal, tr.HitPos:Dot(tr.HitNormal)
 	else
@@ -139,19 +163,19 @@ local function Contact(c, i, pos)
 	end
 end
 
-local function Climb(c, from, to, reached)
+local function Climb(c, i, from, to, reached)
 	local height = Setting("step_height")
 	if height <= 0 then return end
 	local flat = Vector(to.x - from.x, to.y - from.y, 0)
 	if flat:Length() < 1e-3 then return end
-	local top = Hull(c, from, from + UP * height).HitPos
-	local over = Hull(c, top, top + flat)
+	local top = Hull(c, i, from, from + UP * height).HitPos
+	local over = Hull(c, i, top, top + flat)
 	if over.StartSolid then return end
 	local land = over.HitPos
 	local done = Vector(land.x - from.x, land.y - from.y, 0):Length()
 	local slid = Vector(reached.x - from.x, reached.y - from.y, 0):Length()
 	if done <= slid + 0.5 then return end
-	local down = Hull(c, land, land - UP * (top.z - from.z + PROBE))
+	local down = Hull(c, i, land, land - UP * (top.z - from.z + PROBE))
 	if down.StartSolid or not down.Hit or down.HitNormal.z < FLOOR then return end
 	return down.HitPos
 end
@@ -168,9 +192,9 @@ local function Collide(c, i, from, to, along, gravity)
 		rest = Grip(slide, Setting("grip_along") * weight) + Grip(rest - slide, Setting("grip_side") * weight)
 		to = from + rest + normal * math.max(into, math.min(0, c.cd[i] - from:Dot(normal)))
 	end
-	local tr = Hull(c, from, to)
+	local tr = Hull(c, i, from, to)
 	if tr.StartSolid then
-		local free = Hull(c, to, to).StartSolid and from or to
+		local free = Hull(c, i, to, to).StartSolid and from or to
 		c.cn[i], c.cd[i] = nil, nil
 		return free
 	end
@@ -180,11 +204,11 @@ local function Collide(c, i, from, to, along, gravity)
 		rest = rest - tr.HitNormal * math.min(0, rest:Dot(tr.HitNormal))
 		final = tr.HitPos
 		if rest:LengthSqr() > 1e-6 then
-			local tr2 = Hull(c, final, final + rest)
+			local tr2 = Hull(c, i, final, final + rest)
 			if not tr2.StartSolid then final = tr2.HitPos end
 		end
 		if tr.HitNormal.z < FLOOR then
-			local stepped = Climb(c, from, to, final)
+			local stepped = Climb(c, i, from, to, final)
 			if stepped then final, climbed = stepped, true end
 		end
 	end
@@ -207,7 +231,7 @@ end
 local function Tick(c)
 	local x, old, p, cn, cd = c.x, c.old, c.p, c.cn, c.cd
 	local n = #x
-	local link = Setting("segment_length")
+	local link = Chain.Link(c)
 	local fold = link * Setting("bend")
 	local gravity = Setting("gravity")
 	local fall = Vector(0, 0, -gravity * DT * DT)

@@ -13,7 +13,6 @@ local RELIGHT = 3
 local BATCH = 100
 local SPAN = 1.3
 local SWELL_IN = 1
-local SWELL_OUT = 2
 
 function Body.New()
 	return { light = {}, lit = 0 }
@@ -59,28 +58,32 @@ local function Cap(p, dx, dy, dz, joint, outward, R)
 	end
 end
 
-local widths = {}
+local widths, swells = {}, {}
 
-local function Widths(m, n, R, bulges)
-	local link = EvilSnake.Setting("segment_length")
-	for j = 1, m do widths[j] = R end
+local function Widths(m, n, R, bulges, link)
+	local body, tail = EvilSnake.Shape()
+	for j = 1, m do
+		widths[j] = R * EvilSnake.Profile((j - 1) / (m - 1), body, tail)
+		swells[j] = 1
+	end
 	for _, b in ipairs(bulges) do
-		local swell = min(1, b.at / SWELL_IN, (n - b.at) / SWELL_OUT)
+		local swell = min(1, b.at / SWELL_IN)
 		swell = swell * swell * (3 - 2 * swell)
-		local fat = R * (1 + (b.size - 1) * swell)
-		local reach = fat * SPAN
+		local size = 1 + (b.size - 1) * swell
+		local reach = R * EvilSnake.Profile(b.at / n, body, tail) * size * SPAN
 		local lo = max(1, math.floor((b.at - reach / link) * SUB) + 1)
 		local hi = min(m, math.ceil((b.at + reach / link) * SUB) + 1)
 		for j = lo, hi do
 			local d = abs((j - 1) / SUB - b.at) * link
 			if d < reach then
-				widths[j] = max(widths[j], R + (fat - R) * (0.5 + 0.5 * cos(math.pi * d / reach)))
+				swells[j] = max(swells[j], 1 + (size - 1) * (0.5 + 0.5 * cos(math.pi * d / reach)))
 			end
 		end
 	end
+	for j = 1, m do widths[j] = widths[j] * swells[j] end
 end
 
-local function Rings(pts, bulges, R)
+local function Rings(pts, bulges, R, link)
 	count = 0
 	local n = #pts
 	local samples = {}
@@ -91,8 +94,7 @@ local function Rings(pts, bulges, R)
 	samples[#samples + 1] = pts[n]
 	local m = #samples
 	local first = (samples[2] - samples[1]):GetNormalized()
-	local last = (samples[m] - samples[m - 1]):GetNormalized()
-	Widths(m, n - 1, R, bulges)
+	Widths(m, n - 1, R, bulges, link)
 	Cap(samples[1], first.x, first.y, first.z, 1, false, widths[1])
 	for j = 1, m do
 		local a, b = max(j - 1, 1), min(j + 1, m)
@@ -106,7 +108,6 @@ local function Rings(pts, bulges, R)
 		local joint = min(n, link + 1 + ((j - 1) % SUB >= SUB / 2 and 1 or 0))
 		Ring(p.x, p.y, p.z, d.x, d.y, d.z, widths[j], inv, -slope * inv, joint)
 	end
-	Cap(samples[m], last.x, last.y, last.z, n, true, widths[m])
 end
 
 local vx, vy, vz, vl = {}, {}, {}, {}
@@ -122,11 +123,11 @@ local function Vert(i)
 	mesh.AdvanceVertex()
 end
 
-function Body.Draw(body, pts, bulges, R)
+function Body.Draw(body, pts, bulges, R, link)
 	if #pts < 2 then return end
 	Relight(body, pts)
 	cr, cg, cb = EvilSnake.Color()
-	Rings(pts, bulges or {}, R)
+	Rings(pts, bulges or {}, R, link)
 	local tr = EvilSnake.Trig(SIDES)
 	local light = body.light
 	local nx, ny, nz = 0, 0, 1

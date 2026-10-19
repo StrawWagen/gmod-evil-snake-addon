@@ -33,11 +33,11 @@ function ENT:Initialize()
 	self:SetGirth(1)
 	self:Bounds()
 	self.BaseSegments = math.Round(Setting("segments"))
-	self:SetSegments(self.BaseSegments)
+	self:SetLength(self.BaseSegments)
 	local filter = function(e)
 		return e ~= self and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot() and e:GetClass() ~= "evil_snake"
 	end
-	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self:GetSegments(), filter)
+	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter)
 	self.Chain = EvilSnake.Chain.New(joints, filter)
 	self:SetPos(joints[1])
 	self.LastThink = CurTime()
@@ -94,8 +94,8 @@ end
 
 function ENT:Grow()
 	local st = self.Stomach
-	local mass = st:Mass()
-	self:SetSegments(st:Segments(self.BaseSegments, mass))
+	local mass = st:Mass() + st:Eating(#self.Chain.x - 1)
+	self:SetLength(st:Length(self.BaseSegments, mass))
 	local girth = st:Girth(mass)
 	if math.abs(girth - self.Chain.girth) < 1e-3 then return end
 	self:SetGirth(girth)
@@ -185,14 +185,16 @@ function ENT:Think()
 		self.NextDecide = now + DECIDE
 		self:Grow()
 		self:Decide(now)
+	elseif #self.Stomach.transit > 0 then
+		self:Grow()
 	end
-	if #c.x ~= self:GetSegments() + 1 then EvilSnake.Chain.Resize(c, self:GetSegments()) end
+	EvilSnake.Chain.Fit(c, self:GetLength())
 	if EvilSnake.Chain.Update(c, dt) then
 		self:SetPos(c.x[1])
 		self.Dirty = true
 	end
 	self:Swallow(now)
-	if self.Stomach:Digest(dt, self:GetSegments()) then self.Dirty = true end
+	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c)) then self.Dirty = true end
 	if self.Dirty and now >= (self.NextSend or 0) then
 		self.Dirty = false
 		self.NextSend = now + EvilSnake.SEND
