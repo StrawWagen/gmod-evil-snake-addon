@@ -57,6 +57,29 @@ EvilSnake.SETTINGS = {
 		help = "Physics passes per step. More keeps the body from stretching but costs more" },
 }
 
+EvilSnake.PRESETS = {
+	{ name = "chill", label = "Chill", values = {
+		hunt_npcs = 1, sight_range = 800, bite_reach = 16, bulge_size = 2.2, bulge_speed = 35,
+		growth = 1, fattening = 0.25, girth_max = 3.5, learning = 0.5, habituation = 1,
+		wander = 1, hunt_speed = 80, wander_speed = 30, turn_rate = 70, sway = 45, wavelength = 220,
+	} },
+	{ name = "normal", label = "Normal", values = {
+		hunt_npcs = 1, sight_range = 3000, bite_reach = 24, bulge_size = 1.8, bulge_speed = 80,
+		growth = 2, fattening = 0.15, girth_max = 3, learning = 1, habituation = 0.5,
+		wander = 1, hunt_speed = 170, wander_speed = 60, turn_rate = 120, sway = 35, wavelength = 150,
+	} },
+	{ name = "aggressive", label = "Aggressive", values = {
+		hunt_npcs = 1, sight_range = 5500, bite_reach = 40, bulge_size = 1.6, bulge_speed = 180,
+		growth = 4, fattening = 0.12, girth_max = 3, learning = 1.5, habituation = 0.3,
+		wander = 1, hunt_speed = 320, wander_speed = 110, turn_rate = 240, sway = 25, wavelength = 120,
+	} },
+	{ name = "unhinged", label = "Unhinged", values = {
+		hunt_npcs = 1, sight_range = 10000, bite_reach = 90, bulge_size = 2.8, bulge_speed = 600,
+		growth = 12, fattening = 0.4, girth_max = 6, learning = 4, habituation = 0,
+		wander = 1, hunt_speed = 700, wander_speed = 280, turn_rate = 600, sway = 60, wavelength = 70,
+	} },
+}
+
 local convars, byConVar = {}, {}
 for _, s in ipairs(EvilSnake.SETTINGS) do
 	s.convar = "evil_snake_" .. s.name
@@ -66,6 +89,13 @@ end
 
 function EvilSnake.Setting(name)
 	return convars[name]:GetFloat()
+end
+
+function EvilSnake.PresetActive(preset)
+	for name, value in pairs(preset.values) do
+		if math.abs(convars[name]:GetFloat() - value) > 1e-3 then return false end
+	end
+	return true
 end
 
 function EvilSnake.Color()
@@ -83,3 +113,20 @@ net.Receive("EvilSnakeSetting", function(_, ply)
 	if not s or not value or not IsValid(ply) or not ply:IsSuperAdmin() then return end
 	RunConsoleCommand(s.convar, tostring(math.Clamp(value, s.min, s.max)))
 end)
+
+concommand.Add("evil_snake_preset", function(ply, _, args)
+	if IsValid(ply) and not ply:IsSuperAdmin() then return end
+	local want = string.lower(args[1] or "")
+	for _, preset in ipairs(EvilSnake.PRESETS) do
+		if preset.name == want then
+			for name, value in pairs(preset.values) do
+				RunConsoleCommand("evil_snake_" .. name, tostring(value))
+			end
+			return
+		end
+	end
+	local names = {}
+	for _, preset in ipairs(EvilSnake.PRESETS) do names[#names + 1] = preset.name end
+	local msg = "evil_snake_preset " .. table.concat(names, "|")
+	if IsValid(ply) then ply:PrintMessage(HUD_PRINTCONSOLE, msg) else print(msg) end
+end, nil, "Apply a snake behaviour preset")

@@ -30,7 +30,43 @@ local function Admin(control)
 	if control:IsEnabled() ~= admin then control:SetEnabled(admin) end
 end
 
+local function Presets(panel)
+	local row = vgui.Create("DPanel")
+	row:SetPaintBackground(false)
+	row:SetTall(24)
+	panel:AddItem(row)
+	local buttons = {}
+	for _, preset in ipairs(EvilSnake.PRESETS) do
+		local b = vgui.Create("DButton", row)
+		b:SetText(preset.label)
+		b.DoClick = function()
+			for _, s in ipairs(EvilSnake.SETTINGS) do
+				if preset.values[s.name] then
+					s.pending = nil
+					timer.Remove("EvilSnakeSetting_" .. s.name)
+				end
+			end
+			RunConsoleCommand("evil_snake_preset", preset.name)
+		end
+		b.Think = function(self)
+			Admin(self)
+			local on = EvilSnake.PresetActive(preset)
+			if self:GetToggle() ~= on then self:SetToggle(on) end
+		end
+		buttons[#buttons + 1] = b
+	end
+	row.PerformLayout = function(self, w, h)
+		local gap = 4
+		local bw = (w - gap * (#buttons - 1)) / #buttons
+		for i, b in ipairs(buttons) do
+			b:SetPos(math.Round((i - 1) * (bw + gap)), 0)
+			b:SetSize(math.Round(bw), h)
+		end
+	end
+end
+
 local function Build(panel)
+	Presets(panel)
 	for _, s in ipairs(EvilSnake.SETTINGS) do
 		local cv = GetConVar(s.convar)
 		local control
