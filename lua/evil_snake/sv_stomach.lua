@@ -20,6 +20,7 @@ function Stomach:Add(v)
 	v.kind = v.kind or "thing"
 	v.size = v.size or 1
 	v.mass = v.mass or v.size
+	v.brain = v.brain or EvilSnake.Brainpower(v.kind)
 	v.digested = v.digested or false
 	self.victims[v.n] = v
 	return v
@@ -44,6 +45,7 @@ function Stomach:Record(ent)
 		model = ent:GetModel(),
 		player = player,
 		steamid = player and ent:SteamID64() or nil,
+		kind = EvilSnake.Kind(ent),
 		weapon = Weapon(ent),
 		health = ent:GetMaxHealth(),
 		size = math.Clamp(ent:BoundingRadius() / PREY_SIZE, PREY_SCALE[1], PREY_SCALE[2]),

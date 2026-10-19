@@ -45,6 +45,7 @@ function ENT:Initialize()
 	self.WanderYaw = self:GetAngles().y
 	self.Stomach = EvilSnake.Stomach.New()
 	self.Stomach.onDigest = function(v) self:Absorb(v) end
+	self.Mind = EvilSnake.Brain.New()
 end
 
 function ENT:Bounds()
@@ -104,8 +105,14 @@ function ENT:Grow()
 end
 
 function ENT:Absorb(v)
+	local lessons = self.Mind:Learn(v)
 	self:Grow()
-	hook.Run("EvilSnakeAbsorbed", self, v)
+	hook.Run("EvilSnakeAbsorbed", self, v, lessons)
+end
+
+function ENT:Rethink()
+	self.Mind = EvilSnake.Brain.Rebuild(self.Stomach.victims)
+	self:Grow()
 end
 
 function ENT:Swallow(now)

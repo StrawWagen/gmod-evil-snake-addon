@@ -7,7 +7,9 @@ include("evil_snake/sh_settings.lua")
 include("evil_snake/sh_body.lua")
 if SERVER then
 	include("evil_snake/sv_chain.lua")
+	include("evil_snake/sv_brain.lua")
 	include("evil_snake/sv_stomach.lua")
+	include("evil_snake/sv_debug.lua")
 else
 	include("evil_snake/cl_settings.lua")
 	include("evil_snake/cl_util.lua")
