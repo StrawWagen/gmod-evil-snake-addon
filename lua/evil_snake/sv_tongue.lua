@@ -16,9 +16,6 @@ local WAVES = 1.5
 local CONE = 0.4
 local TRY = 0.1
 local REST = 0.6
-local FLICK = { 3, 7 }
-local FLICK_REACH = 0.25
-local FLICK_SPREAD = 0.35
 local LICK = 10
 local PUSH = 150
 local PUSH_UP = 100
@@ -69,7 +66,7 @@ end
 function Tongue.New()
 	return setmetatable({
 		state = IN, open = 0, len = 0, max = 0, tip = Vector(), dir = Vector(1, 0, 0),
-		mouth = Vector(), fwd = Vector(1, 0, 0), up = UP, next = 0, flick = CurTime() + math.Rand(FLICK[1], FLICK[2]),
+		mouth = Vector(), fwd = Vector(1, 0, 0), up = UP, next = 0,
 	}, Tongue)
 end
 
@@ -128,9 +125,6 @@ function Tongue:Try(snake, now)
 			return self:Start(snake, prey, reach, to / math.max(dist, 1))
 		end
 	end
-	if now < self.flick then return end
-	self.flick = now + math.Rand(FLICK[1], FLICK[2])
-	self:Start(snake, nil, reach * FLICK_REACH, (fwd + VectorRand() * FLICK_SPREAD):GetNormalized())
 end
 
 function Tongue:Lick(snake, from, to)
