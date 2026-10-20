@@ -2,8 +2,6 @@
 
 > A long snake for Garry's Mod that eats people and gets bigger.
 
-It hunts NPCs and players, holds them half in its mouth for a bit, then pulls them down. You can watch them bulge all the way to the tail. Every meal makes it longer and fatter, and it learns from the minds of whatever it eats. It also picks up on how players get away from it, and gets better at stopping exactly that once it eats them.
-
 On the [Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3823748254).
 
 ## Needs
@@ -12,8 +10,8 @@ On the [Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3823748
 
 Optional:
 
-- Evil Crawling Thing, for propellor mode
-- Evil Fungus, so it smears fungus behind it after crawling through some
+- Evil Crawling Thing, for Propellor Mode™️
+- Evil Fungus, if you want it to smear fungus behind it after crawling through some
 
 ## Spawning
 
