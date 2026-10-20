@@ -54,3 +54,9 @@ end, function(cmd)
 	for kind in SortedPairs(EvilSnake.KINDS) do list[#list + 1] = cmd .. " " .. kind end
 	return list
 end, "Feed every snake on the map someone of a kind, straight to digested: <kind> [count]")
+
+concommand.Add("evil_snake_follow", function(ply)
+	if not IsValid(ply) or not ply:IsSuperAdmin() then return end
+	EvilSnake.Leader = EvilSnake.Leader ~= ply and ply or nil
+	ply:PrintMessage(HUD_PRINTTALK, EvilSnake.Leader and "Snakes follow your crosshair" or "Snakes are on their own again")
+end, nil, "Toggle every snake on the map crawling after wherever you aim, walls and ceilings included")

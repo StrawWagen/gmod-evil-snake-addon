@@ -90,6 +90,7 @@ local SCARED = 0.3
 local CRUISE = 200
 local CRUISE_AHEAD = 600
 local CRUISE_LOOK = 2000
+local FOLLOW_LOOK = 32768
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -856,6 +857,27 @@ function ENT:Cruise(head, yaw)
 	return aim
 end
 
+function ENT:Follow(c, head)
+	local ply = EvilSnake.Leader
+	if not IsValid(ply) then return end
+	self.Prey, self.LastHead, self.Route = nil, nil, nil
+	if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
+	c.walls, c.ceilings = 1, 1
+	local eye = ply:EyePos()
+	local tr = util.TraceLine({ start = eye, endpos = eye + ply:GetAimVector() * FOLLOW_LOOK, mask = MASK_SOLID_BRUSHONLY })
+	local r = self:Radius()
+	local aim = tr.HitPos + tr.HitNormal * r
+	local to = aim - head
+	if to:LengthSqr() < (r * 2 + WAYPOINT) ^ 2 then
+		EvilSnake.Chain.Drive(c, EvilSnake.Chain.HeadYaw(c), 0)
+		return true
+	end
+	if to.z > r then c.climb = 1 elseif to.z < -r then c.climb = -1 end
+	local speed = Setting(c.fly and "fly_speed" or "hunt_speed") * self.Sharp.speed
+	EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), speed, aim)
+	return true
+end
+
 function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
@@ -866,6 +888,7 @@ function ENT:Decide(now)
 		EvilSnake.Chain.Drive(c, yaw, 0)
 		return
 	end
+	if self:Follow(c, head) then return end
 	if self.LastHead and c.speed > 0 then
 		local moved = self.LastHead:Distance(head)
 		if moved < c.speed * DECIDE * STUCK then
@@ -953,7 +976,7 @@ function ENT:Think()
 	local slide = math.Round(c.slide or 0)
 	if slide ~= self:GetSlide() then self:SetSlide(slide) end
 	if alive then
-		if not self:Limp() then self:Catch(now) end
+		if not self:Limp() and not IsValid(EvilSnake.Leader) then self:Catch(now) end
 		self.Hitbox:Think(now)
 		self:Regen(now, dt)
 		EvilSnake.Smear(self, now)
