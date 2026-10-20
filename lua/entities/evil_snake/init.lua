@@ -352,12 +352,28 @@ end
 function ENT:Escape(ent)
 	ent.EvilSnakeFree = CurTime() + ESCAPE_GRACE
 	EvilSnake.Watch(ent, "slipped")
-	if self.Tongue.ent == ent then return self.Tongue:Drop(self) end
+	if self.Tongue.ent == ent then
+		self.Tongue:Drop(self)
+		Evil.Up(ent)
+		return self:Fling(ent)
+	end
 	local held = self.Held
 	if not held or held.ent ~= ent then return end
 	self:Release()
-	ent:SetVelocity(self.Tongue.fwd * ESCAPE_PUSH + Vector(0, 0, ESCAPE_UP))
+	self:Fling(ent)
 	hook.Run("EvilSnakeEscaped", self, ent)
+end
+
+function ENT:Fling(ent)
+	if not IsValid(ent) then return end
+	local away = ent:WorldSpaceCenter() - self:Mouth()
+	away.z = 0
+	if away:LengthSqr() < 1 then
+		away = Vector(self.Tongue.fwd)
+		away.z = 0
+	end
+	away:Normalize()
+	ent:SetVelocity(away * ESCAPE_PUSH + Vector(0, 0, ESCAPE_UP))
 end
 
 local function Free(ent, pos, snake)
