@@ -52,6 +52,9 @@ local HEAR = 2
 local SMELL = 1.5
 local DREAD_MORE = 1
 local PICKY = 3
+local CLING = 2.5
+local DROP_TIME = 1.5
+local DROP_CHANCE = 0.25
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -111,7 +114,10 @@ function ENT:Sharpen()
 	s.dread = 1 + DREAD_MORE * fear
 	s.picky = PICKY * mind:Edge("cunning")
 	s.lead = math.min(mind:Edge("tactics"), 1)
-	self.Chain.quick = s.turn
+	local c = self.Chain
+	c.quick = s.turn
+	c.walls = math.min(1, mind:Edge("walls") * CLING)
+	c.ceilings = math.min(1, mind:Edge("ceilings") * CLING)
 	if math.abs(self:GetDigest() - s.digest) > 1e-3 then self:SetDigest(s.digest) end
 	if self.Dreading ~= s.dread then
 		self.Dreading = s.dread
@@ -144,6 +150,7 @@ function ENT:SendBody(ply)
 	net.WriteDouble(CurTime() - self.Chain.acc)
 	net.WriteUInt(#x, 8)
 	for _, p in ipairs(x) do net.WriteVector(p) end
+	net.WriteNormal(self.Chain.up)
 	local transit = self.Stomach.transit
 	net.WriteUInt(#transit, 6)
 	for _, m in ipairs(transit) do
@@ -181,7 +188,7 @@ local Edible = EvilSnake.Edible
 function ENT:Mouth()
 	local x = self.Chain.x
 	local r = self:Radius()
-	local head, neck = EvilSnake.HeadPoints(x[1], x[2], r)
+	local head, neck = EvilSnake.HeadPoints(x[1], x[2], r, self.Chain.up)
 	return head + (head - neck):GetNormalized() * EvilSnake.HeadRadius(r)
 end
 
@@ -289,8 +296,9 @@ function ENT:EvilPose(victim)
 	if not held or held.ent ~= victim then return end
 	local x = self.Chain.x
 	local depth = EvilSnake.Hold((CurTime() - held.at) * held.pace, held.hold)
-	local head, neck = EvilSnake.HeadPoints(x[1], x[2], self:Radius())
-	local pos, ang = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * depth)
+	local up = self.Chain.up
+	local head, neck = EvilSnake.HeadPoints(x[1], x[2], self:Radius(), up)
+	local pos, ang = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * depth, up)
 	return pos, ang
 end
 
@@ -415,6 +423,24 @@ function ENT:Catch(now)
 	end
 end
 
+function ENT:Above(prey, head)
+	return prey:GetPos().z > head.z + Setting("step_height") + self:Radius() * 2
+end
+
+function ENT:Drop(prey, head)
+	local c = self.Chain
+	if EvilSnake.Chain.Surface(c) ~= "ceiling" then return end
+	if not prey then
+		if math.random() < DROP_CHANCE then EvilSnake.Chain.LetGo(c, DROP_TIME) end
+		return
+	end
+	local at = prey:WorldSpaceCenter()
+	local reach = self:Radius() * 2 + Setting("bite_reach") * self.Sharp.reach
+	if at.z < head.z and (at.x - head.x) ^ 2 + (at.y - head.y) ^ 2 < reach * reach then
+		EvilSnake.Chain.LetGo(c, DROP_TIME)
+	end
+end
+
 function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
@@ -434,6 +460,8 @@ function ENT:Decide(now)
 		end
 		if self.Stuck >= STUCK_TIME then
 			self.Stuck = 0
+			c.climb = -c.climb
+			if IsValid(self.Prey) and self:Above(self.Prey, head) then EvilSnake.Watch(self.Prey, "climbed") end
 			self.WanderYaw = yaw + 180 + math.Rand(-60, 60)
 			self.NextWander = now + math.Rand(WANDER_TIME[1], WANDER_TIME[2])
 			self.DetourUntil = now + DETOUR
@@ -444,7 +472,7 @@ function ENT:Decide(now)
 	local prey = self.Prey
 	local edible = Edible(prey, self)
 	if not edible or head:Distance(prey:WorldSpaceCenter()) > self:Noticed() * LOSE * self.Sharp.keep then
-		if edible then EvilSnake.Watch(prey, "outran") end
+		if edible then EvilSnake.Watch(prey, self:Above(prey, head) and "climbed" or "outran") end
 		prey = self:FindPrey(head)
 	end
 	self.Prey = prey
@@ -453,11 +481,16 @@ function ENT:Decide(now)
 	if prey and now >= (self.DetourUntil or 0) then
 		local aim = self:Lead(prey, head)
 		local to = aim - head
+		local r = self:Radius()
+		if to.z > r then c.climb = 1 elseif to.z < -r then c.climb = -1 end
+		self:Drop(prey, head)
 		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed") * self.Sharp.speed, aim)
 	elseif prey or Setting("wander") ~= 0 then
 		if now >= (self.NextWander or 0) then
 			self.WanderYaw = self.WanderYaw + math.Rand(-WANDER_TURN, WANDER_TURN)
 			self.NextWander = now + math.Rand(WANDER_TIME[1], WANDER_TIME[2])
+			c.climb = math.random() < 0.5 and 1 or -1
+			if not prey then self:Drop(nil, head) end
 		end
 		EvilSnake.Chain.Drive(c, self.WanderYaw, Setting("wander_speed") * self.Sharp.speed)
 	else

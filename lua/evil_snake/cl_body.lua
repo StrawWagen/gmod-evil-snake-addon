@@ -21,6 +21,7 @@ local BATCH = 100
 local SPAN = 1.3
 local SWELL_IN = 1
 local NECK = 3
+local UP = Vector(0, 0, 1)
 
 function Body.New()
 	return { light = {}, lit = 0, eyes = {} }
@@ -166,7 +167,7 @@ local function Spline(pts, sub)
 	return m
 end
 
-local function Rings(pts, bulges, R, link, mouth, sub)
+local function Rings(pts, bulges, R, link, mouth, sub, up)
 	count = 0
 	local n = #pts
 	local m = Spline(pts, sub)
@@ -177,7 +178,8 @@ local function Rings(pts, bulges, R, link, mouth, sub)
 			local d = (j - 1) / sub * link
 			if d >= reach then break end
 			local u = d / reach
-			sz[j] = sz[j] - drop * (1 - u * u * (3 - 2 * u))
+			local k = drop * (1 - u * u * (3 - 2 * u))
+			sx[j], sy[j], sz[j] = sx[j] - up.x * k, sy[j] - up.y * k, sz[j] - up.z * k
 		end
 	end
 	local first = Vector(sx[2] - sx[1], sy[2] - sy[1], sz[2] - sz[1])
@@ -207,7 +209,8 @@ local function Vert(i)
 	mesh.AdvanceVertex()
 end
 
-function Body.Draw(body, pts, bulges, R, link, mouth)
+function Body.Draw(body, pts, bulges, R, link, mouth, up)
+	up = up or UP
 	if #pts < 2 then return end
 	Relight(body, pts)
 	cr, cg, cb = EvilSnake.Color()
@@ -215,7 +218,7 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 	local near = math.Clamp(math.ceil(link / (R * SPACING)), 2, SUB)
 	local sub = math.Round(Lerp(detail, near, 1))
 	local sides = math.Round(Lerp(detail, SIDES[1], SIDES[2]))
-	Rings(pts, bulges or {}, R, link, mouth, sub)
+	Rings(pts, bulges or {}, R, link, mouth, sub, up)
 	local tr = EvilSnake.Trig(sides)
 	local light = body.light
 	local nx, ny, nz = 0, 0, 1
@@ -265,5 +268,5 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 		mesh.End()
 	end
 	body.head, body.dir, body.W = headP, headDir, headW
-	EvilSnake.Head.Draw(body.light, headP, headDir, headW, mouth, cr, cg, cb, body.eyes, body.look)
+	EvilSnake.Head.Draw(body.light, headP, headDir, headW, mouth, cr, cg, cb, body.eyes, body.look, up)
 end

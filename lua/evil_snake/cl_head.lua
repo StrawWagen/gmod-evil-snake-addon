@@ -233,9 +233,9 @@ function Head.Gape(mouth, W)
 	return Lerp(mouth.open, IDLE, hold) + SNAP * (mouth.snap or 0)
 end
 
-function Head.Draw(cube, p, dir, W, mouth, cr, cg, cb, eyes, look)
+function Head.Draw(cube, p, dir, W, mouth, cr, cg, cb, eyes, look, surface)
 	light = cube
-	local right = dir:Cross(UP)
+	local right = dir:Cross(surface or UP)
 	if right:LengthSqr() < 1e-4 then right = dir:Cross(SIDE) end
 	right:Normalize()
 	local up = right:Cross(dir)

@@ -34,6 +34,10 @@ local BUOY = 1.3
 local WET_DAMP = 0.9
 local DIVE = 0.8
 local SURGE = 0.5
+local STICK = 1
+local CLING_GRIP = 1
+local HUG = 0.5
+local UP_EASE = 6
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -46,6 +50,7 @@ function Chain.New(joints, filter)
 	local c = {
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
 		mins = Vector(), maxs = Vector(), hull = {}, trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1, stretch = 1, wet = {},
+		up = Vector(0, 0, 1), walls = 0, ceilings = 0, climb = 1, letgo = 0,
 	}
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
 	return c
@@ -58,6 +63,20 @@ end
 local function Soak(c, i, pos)
 	if not Wet(pos) then return 0 end
 	return Wet(pos + UP * (c.hull[i] / HULL * 0.5)) and 1 or 0.5
+end
+
+local function Clings(c, normal)
+	if c.letgo > 0 then return 0 end
+	if normal.z > -FLOOR then return c.walls end
+	return c.ceilings
+end
+
+local function Steep(c, normal)
+	return normal ~= nil and normal.z < FLOOR and Clings(c, normal) > 0
+end
+
+local function Hold(c, normal)
+	return normal and normal.z < FLOOR and Clings(c, normal) or 0
 end
 
 local function Hull(c, i, from, to)
@@ -76,14 +95,14 @@ local function Size(c)
 		local grow = h - (c.hull[i] or h)
 		if grow > 0 then
 			local normal = c.cn[i]
-			local lift = grow
+			local lift = UP * grow
 			if normal then
-				local reach = math.abs(normal.x) + math.abs(normal.y) + normal.z
-				lift = grow * reach / math.max(normal.z, 0.3)
+				local reach = math.abs(normal.x) + math.abs(normal.y) + math.abs(normal.z)
+				lift = normal.z >= 0.3 and UP * (grow * reach / normal.z) or normal * (grow * reach)
 				c.cd[i] = c.cd[i] + grow * reach
 			end
-			c.x[i] = c.x[i] + UP * lift
-			c.old[i] = c.old[i] + UP * lift
+			c.x[i] = c.x[i] + lift
+			c.old[i] = c.old[i] + lift
 		end
 		c.hull[i] = h
 	end
@@ -102,6 +121,18 @@ end
 function Chain.Drive(c, yaw, speed, aim)
 	c.goal, c.want, c.aim = yaw, speed, aim
 	if speed > 0 then c.awake, c.still = true, 0 end
+end
+
+function Chain.LetGo(c, seconds)
+	c.letgo = math.max(c.letgo, seconds)
+	c.awake, c.still = true, 0
+end
+
+function Chain.Surface(c)
+	local normal = c.cn[1]
+	if not normal then return end
+	if normal.z >= FLOOR then return "floor" end
+	return normal.z > -FLOOR and "wall" or "ceiling"
 end
 
 function Chain.Swell(c, girth)
@@ -188,13 +219,43 @@ local function Grip(v, amount)
 	return v * ((len - amount) / len)
 end
 
-local function Contact(c, i, pos)
-	local tr = Hull(c, i, pos, pos - UP * PROBE)
-	if tr.Hit and not tr.StartSolid and tr.HitNormal.z > 0 then
-		c.cn[i], c.cd[i] = tr.HitNormal, tr.HitPos:Dot(tr.HitNormal)
-	else
-		c.cn[i], c.cd[i] = nil, nil
+local function Touch(c, i, pos, dir)
+	local tr = Hull(c, i, pos, pos + dir * PROBE)
+	if not tr.Hit or tr.StartSolid or not (tr.HitNormal.z > 0 or Clings(c, tr.HitNormal) > 0) then return false end
+	c.cn[i], c.cd[i] = tr.HitNormal, tr.HitPos:Dot(tr.HitNormal)
+	return true
+end
+
+local function Contact(c, i, pos, hit)
+	local prev, lead = c.cn[i], i > 1 and c.cn[i - 1] or nil
+	if i == 1 and hit and Touch(c, i, pos, hit.z >= FLOOR and -UP or -hit) then return end
+	if Touch(c, i, pos, -UP) then return end
+	if Steep(c, prev) and Touch(c, i, pos, -prev) then return end
+	if Steep(c, lead) and Touch(c, i, pos, -lead) then return end
+	if hit and Steep(c, hit) and Touch(c, i, pos, -hit) then return end
+	c.cn[i], c.cd[i] = nil, nil
+end
+
+local function Over(c, i, pos, wall)
+	local reach = c.hull[i] * 2 + PROBE
+	local across = Hull(c, i, pos, pos - wall * reach)
+	if across.StartSolid then return end
+	local down = Hull(c, i, across.HitPos, across.HitPos - UP * reach)
+	if down.StartSolid or not down.Hit or down.HitNormal.z < FLOOR then return end
+	return down.HitPos
+end
+
+local function Surface(c, normal, step)
+	local into = step:Dot(normal)
+	local d = step - normal * into
+	if normal.z > -FLOOR then
+		local up = UP - normal * normal.z
+		up:Normalize()
+		d = d + up * (math.abs(into) * c.climb)
 	end
+	local len = d:Length()
+	if len > 1e-4 then d = d * (step:Length() / len) end
+	return d
 end
 
 local function Unstick(c, i, pos)
@@ -236,7 +297,7 @@ local function Collide(c, i, from, to, along, gravity)
 		local rest = move - normal * into
 		local flat = (along - normal * along:Dot(normal)):GetNormalized()
 		local slide = flat * rest:Dot(flat)
-		local weight = gravity * DT * DT * math.max(0, normal.z)
+		local weight = gravity * DT * DT * math.max(normal.z, Hold(c, normal) * CLING_GRIP)
 		rest = Grip(slide, Setting("grip_along") * weight) + Grip(rest - slide, Setting("grip_side") * weight)
 		to = from + rest + normal * math.max(into, math.min(0, c.cd[i] - from:Dot(normal)))
 	end
@@ -246,8 +307,9 @@ local function Collide(c, i, from, to, along, gravity)
 		Contact(c, i, free)
 		return free
 	end
-	local final, climbed = to, false
+	local final, climbed, hit = to, false, nil
 	if tr.Hit then
+		hit = tr.HitNormal
 		local rest = to - tr.HitPos
 		rest = rest - tr.HitNormal * math.min(0, rest:Dot(tr.HitNormal))
 		final = tr.HitPos
@@ -257,10 +319,17 @@ local function Collide(c, i, from, to, along, gravity)
 		end
 		if tr.HitNormal.z < FLOOR then
 			local stepped = Climb(c, i, from, to, final)
-			if stepped then final, climbed = stepped, true end
+			if stepped then final, climbed, hit = stepped, true, nil end
 		end
 	end
-	Contact(c, i, final)
+	Contact(c, i, final, hit)
+	if not c.cn[i] and Steep(c, normal) and normal.z > -FLOOR then
+		local top = Over(c, i, final, normal)
+		if top then
+			Contact(c, i, top)
+			return top, false, true
+		end
+	end
 	return final, climbed
 end
 
@@ -409,10 +478,15 @@ local function Tick(c)
 	local gravity = Setting("gravity")
 	local fall = Vector(0, 0, -gravity * DT * DT)
 	local wet = c.wet
+	local stick = STICK * gravity * DT * DT
+	if c.letgo > 0 then c.letgo = math.max(0, c.letgo - DT) end
 	for i = 1, n do
 		local soak = Soak(c, i, x[i])
 		wet[i] = soak
-		p[i] = x[i] + (x[i] - old[i]) * (soak > 0 and WET_DAMP or DAMP) + fall * (1 - BUOY * soak)
+		local pull = fall * (1 - BUOY * soak)
+		local hold = Hold(c, cn[i])
+		if hold > 0 then pull = pull * (1 - hold) - cn[i] * (stick * hold) end
+		p[i] = x[i] + (x[i] - old[i]) * (soak > 0 and WET_DAMP or DAMP) + pull
 	end
 	local want = c.want or 0
 	if c.driving and c.goal then
@@ -423,7 +497,10 @@ local function Tick(c)
 	local swim = wet[1] > 0 and (not cn[1] or wet[1] >= 1 and not (c.aim and c.aim.z < x[1].z))
 	if c.speed > 0 then
 		local step = Steer(c)
-		if cn[1] and not swim then
+		local hold = Hold(c, cn[1])
+		if hold > 0 and not swim then
+			p[1] = x[1] + Surface(c, cn[1], step) - cn[1] * HUG + fall * (1 - hold)
+		elseif cn[1] and not swim then
 			p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * DAMP) + fall
 		elseif swim then
 			local cap = c.speed * DT * DIVE
@@ -479,12 +556,14 @@ local function Tick(c)
 	local moved, slid = 0, 0
 	for i = 1, n do
 		local along = (p[math.min(i + 1, n)] - p[math.max(i - 1, 1)]):GetNormalized()
-		local to, climbed = Collide(c, i, x[i], p[i], along, gravity)
-		old[i], x[i] = climbed and Vector(x[i].x, x[i].y, to.z) or x[i], to
+		local to, climbed, snapped = Collide(c, i, x[i], p[i], along, gravity)
+		old[i], x[i] = snapped and Vector(to) or climbed and Vector(x[i].x, x[i].y, to.z) or x[i], to
 		moved = math.max(moved, to:DistToSqr(old[i]))
 		if cn[i] then slid = slid + math.sqrt((to.x - old[i].x) ^ 2 + (to.y - old[i].y) ^ 2) end
 	end
 	c.slide = slid / n / DT
+	c.up = LerpVector(math.min(1, UP_EASE * DT), c.up, cn[1] or UP)
+	c.up:Normalize()
 	return moved
 end
 

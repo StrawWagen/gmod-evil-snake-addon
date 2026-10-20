@@ -75,23 +75,23 @@ function EvilSnake.HeadDrop(R)
 	return R - EvilSnake.HeadRadius(R)
 end
 
-function EvilSnake.HeadPoints(head, neck, R)
+function EvilSnake.HeadPoints(head, neck, R, up)
 	local drop = EvilSnake.HeadDrop(R)
 	if drop <= 0 then return head, neck end
-	local down = Vector(0, 0, drop)
+	local down = (up or UP) * drop
 	return head - down, neck - down
 end
 
-function EvilSnake.Gape(head, neck)
+function EvilSnake.Gape(head, neck, surface)
 	local f = head - neck
 	f:Normalize()
-	local up = f + UP * LIFT
+	local up = f + (surface or UP) * LIFT
 	up:Normalize()
 	return f, up
 end
 
-function EvilSnake.HeldPlace(head, neck, depth)
-	local f, up = EvilSnake.Gape(head, neck)
+function EvilSnake.HeldPlace(head, neck, depth, surface)
+	local f, up = EvilSnake.Gape(head, neck, surface)
 	local fwd = UP - up * UP:Dot(up)
 	if fwd:LengthSqr() < 1e-4 then fwd = -f end
 	fwd:Normalize()

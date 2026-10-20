@@ -27,6 +27,7 @@ net.Receive("EvilSnakeBody", function()
 	local t = net.ReadDouble()
 	local pts, meals = {}, {}
 	for i = 1, net.ReadUInt(8) do pts[i] = net.ReadVector() end
+	local up = net.ReadNormal()
 	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat(), ply = net.ReadEntity() } end
 	local held
 	if net.ReadBool() then
@@ -37,7 +38,7 @@ net.Receive("EvilSnakeBody", function()
 		tongue.tip = net.ReadVector()
 		tongue.ent = net.ReadEntity()
 	end
-	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals, held, tongue) end
+	if IsValid(ent) and ent.Snapshot then ent:Snapshot(t, pts, meals, held, tongue, up) end
 end)
 
 function ENT:Initialize()
@@ -48,7 +49,7 @@ function ENT:Initialize()
 	self.Snaps = self.Snaps or {}
 end
 
-function ENT:Snapshot(t, pts, meals, held, tongue)
+function ENT:Snapshot(t, pts, meals, held, tongue, up)
 	local snaps = self.Snaps or {}
 	self.Snaps = snaps
 	local d, off = UnPredictedCurTime() - t, self.Offset
@@ -59,18 +60,19 @@ function ENT:Snapshot(t, pts, meals, held, tongue)
 		if t - last.t > GAP then
 			snaps[#snaps + 1] = {
 				t = t - EvilSnake.SEND, pts = last.pts, meals = last.meals, fed = last.fed, held = last.held, tongue = last.tongue,
+				up = last.up,
 			}
 		end
 	end
-	snaps[#snaps + 1] = { t = t, pts = pts, meals = meals, fed = t, held = held, tongue = tongue }
+	snaps[#snaps + 1] = { t = t, pts = pts, meals = meals, fed = t, held = held, tongue = tongue, up = up }
 	while #snaps > KEEP do table.remove(snaps, 1) end
 end
 
 function ENT:EvilPose(victim)
 	local pose = self.Pose
 	if not pose then return end
-	local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], self:Radius())
-	local pos, ang, f, mouth = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * (self.HeldDepth or 0))
+	local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], self:Radius(), self.Up)
+	local pos, ang, f, mouth = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * (self.HeldDepth or 0), self.Up)
 	return pos, ang, f, f:Dot(mouth)
 end
 
@@ -162,6 +164,9 @@ function ENT:Think()
 	local rt = math.min(UnPredictedCurTime() - self.Offset - DELAY, snaps[#snaps].t)
 	local pose, snap, later, u = Sample(snaps, rt)
 	self.Pose = pose
+	local up = LerpVector(u, snap.up, later.up)
+	up:Normalize()
+	self.Up = up
 	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
 	local ahead = math.max(rt - snap.fed, 0) * EvilSnake.Setting("bulge_speed") * math.max(self:GetDigest(), 1) / self.Link
 	local bulges, fattest, mine = {}, 1, nil
@@ -186,11 +191,12 @@ function ENT:Think()
 		fattest = math.max(fattest, held.size, snug)
 		self.HeldDepth = depth
 		local shut = math.Clamp((depth - SHUT[1]) / (SHUT[2] - SHUT[1]), 0, 1)
-		local _, up = EvilSnake.Gape(EvilSnake.HeadPoints(pose[1], pose[2], r))
+		local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], r, self.Up)
+		local _, up = EvilSnake.Gape(head, neck, self.Up)
 		local snap = swell < 1 and math.sin(math.pi * swell) or 0
 		self.Gape = { fit = fit, open = swell * (1 - shut * shut * (3 - 2 * shut)), dir = up, snap = snap }
 	else
-		local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], r)
+		local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], r, self.Up)
 		self.Gape = EvilSnake.Tongue.Gape(tongue, head, neck, EvilSnake.HeadRadius(r))
 	end
 	self.Bulges = bulges
@@ -204,6 +210,6 @@ end
 
 function ENT:Draw()
 	if not self.Pose then return end
-	EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius(), self.Link, self.Gape)
+	EvilSnake.Body.Draw(self.Body, self.Pose, self.Bulges, self:Radius(), self.Link, self.Gape, self.Up)
 	EvilSnake.Tongue.Draw(self.Tongue, self.Body, RealTime())
 end

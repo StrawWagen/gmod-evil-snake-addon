@@ -9,7 +9,7 @@ local OPEN = 0.35
 local ARMED = 0.3
 local BULK = 0.5
 
-EvilSnake.ASPECTS = { "cunning", "tactics", "firearms", "strength", "agility", "resilience", "hunger", "energy", "fear" }
+EvilSnake.ASPECTS = { "cunning", "tactics", "firearms", "strength", "agility", "resilience", "hunger", "energy", "fear", "walls", "ceilings" }
 
 local KINDS = {}
 for name, kind in pairs({
@@ -24,7 +24,7 @@ for name, kind in pairs({
 	CLASS_ZOMBIE = "zombie",
 	CLASS_HEADCRAB = "headcrab",
 	CLASS_ANTLION = "antlion",
-	CLASS_BARNACLE = "beast", CLASS_BULLSQUID = "beast", CLASS_HOUNDEYE = "beast", CLASS_EARTH_FAUNA = "beast",
+	CLASS_BARNACLE = "barnacle", CLASS_BULLSQUID = "beast", CLASS_HOUNDEYE = "beast", CLASS_EARTH_FAUNA = "beast",
 	CLASS_ALIEN_MONSTER = "beast", CLASS_ALIEN_PREY = "beast", CLASS_ALIEN_PREDATOR = "beast", CLASS_ALIEN_MILITARY = "beast",
 }) do
 	if _G[name] then KINDS[_G[name]] = kind end
@@ -38,9 +38,10 @@ local KINDS_INFO = {
 	machine = { brain = 0.1, teach = { resilience = 0.6, energy = 0.4, tactics = 0.2 } },
 	stalker = { brain = 0.15, teach = { energy = 0.4, resilience = 0.4, cunning = -0.2 } },
 	vortigaunt = { brain = 0.5, teach = { energy = 1, cunning = 0.5 } },
-	zombie = { brain = 0.1, teach = { hunger = 1, resilience = 0.6, cunning = -0.3 } },
-	headcrab = { brain = 0.03, teach = { agility = 0.8, hunger = 0.4 } },
-	antlion = { brain = 0.05, teach = { strength = 0.6, agility = 0.4, hunger = 0.3 } },
+	zombie = { brain = 0.1, teach = { hunger = 1, resilience = 0.6, cunning = -0.3, walls = 0.3 } },
+	headcrab = { brain = 0.03, teach = { agility = 0.8, hunger = 0.4, walls = 0.6 } },
+	antlion = { brain = 0.05, teach = { strength = 0.6, agility = 0.4, hunger = 0.3, walls = 0.4 } },
+	barnacle = { brain = 0.05, teach = { ceilings = 1.5, hunger = 0.4 } },
 	beast = { brain = 0.02, teach = { hunger = 0.5, strength = 0.3 } },
 	thing = { brain = 0.05, teach = { hunger = 0.2 } },
 }
@@ -56,12 +57,15 @@ local RESONANCE = {
 	resilience = { hunger = 0.3, energy = 0.2 },
 	hunger = { cunning = -0.3 },
 	fear = { cunning = 0.3 },
+	walls = { agility = 0.3 },
+	ceilings = { walls = 0.6 },
 }
 
 local TRICKS = {
 	slipped = { full = 3, teach = { strength = 0.6, resilience = 0.4 } },
 	outran = { full = 3, teach = { energy = 0.6, tactics = 0.4 } },
 	dodged = { full = 3, teach = { agility = 0.6, cunning = 0.3 } },
+	climbed = { full = 3, teach = { walls = 0.8, ceilings = 0.4 } },
 }
 EvilSnake.TRICKS = TRICKS
 

@@ -231,8 +231,8 @@ function Tongue:Think(snake, now, dt)
 	local was = self.state
 	local x = snake.Chain.x
 	local r = snake:Radius()
-	local head, neck = EvilSnake.HeadPoints(x[1], x[2], r)
-	local f, up = EvilSnake.Gape(head, neck)
+	local head, neck = EvilSnake.HeadPoints(x[1], x[2], r, snake.Chain.up)
+	local f, up = EvilSnake.Gape(head, neck, snake.Chain.up)
 	self.mouth, self.fwd, self.up = head + f * EvilSnake.HeadRadius(r), f, up
 	local on = Setting("tongue") ~= 0
 	if self.state == IN then
