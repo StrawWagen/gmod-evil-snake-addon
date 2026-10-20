@@ -19,7 +19,7 @@ EvilSnake.SETTINGS = {
 		help = "Seconds it holds someone half in its mouth before pulling them down" },
 	{ name = "instant_npcs", default = 1, min = 0, max = 1, label = "Instantly swallow NPCs",
 		help = "NPCs get pulled down in a blink instead of being held in its mouth first" },
-	{ name = "tongue", default = 0, min = 0, max = 1, label = "Tongue mode",
+	{ name = "tongue", default = 1, min = 0, max = 1, label = "Tongue mode",
 		help = "Gives the snake a lashing tongue" },
 	{ name = "tongue_reach", default = 300, min = 50, max = 1500, decimals = 0, label = "Tongue reach",
 		help = "How far the tongue lashes out to grab someone" },
