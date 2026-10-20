@@ -28,6 +28,7 @@ local CLAMP = 0.6
 local BITE_AT = 0.55
 local THROAT = { 120, 28, 38 }
 local BONE = { 235, 228, 205 }
+local CROWN = 0.25
 local UP = Vector(0, 0, 1)
 local SIDE = Vector(1, 0, 0)
 
@@ -65,11 +66,12 @@ end
 
 local function Lit(nx, ny, nz)
 	local l = sqrt(nx * nx + ny * ny + nz * nz)
-	if l < 1e-6 then return EvilSnake.Bright(light, 0, ux, uy, uz) end
-	return EvilSnake.Bright(light, 0, nx / l, ny / l, nz / l)
+	if l < 1e-6 then return EvilSnake.Bright(light, 0, ux, uy, uz), ux, uy, uz end
+	nx, ny, nz = nx / l, ny / l, nz / l
+	return EvilSnake.Bright(light, 0, nx, ny, nz), nx, ny, nz
 end
 
-local gx, gy, gz, gr, gg, gb = {}, {}, {}, {}, {}, {}
+local gx, gy, gz, gr, gg, gb, gu, gv = {}, {}, {}, {}, {}, {}, {}, {}
 local verts, vr, vg, vb = {}, {}, {}, {}
 local scratch = Vector()
 
@@ -84,10 +86,12 @@ local function Jaw(W, Lw, cr, cg, cb)
 		local a, b, n, wide, hollow = Shape(u, W)
 		local e, cav, o = 2 / n, b * hollow, (i - 1) * K
 		local deep = Lerp(u, 0.3, 0.85)
+		local span, along = CROWN * sqrt(a / W), -u * Lw / (2 * math.pi * W)
 		for k = 0, SHELL do
 			local t = k / SHELL * math.pi
 			local y = a * Pow(cos(t), e)
 			Set(o + k + 1, u * Lw - Sweep(y, W, wide), y, b * Pow(sin(t), e), cr, cg, cb)
+			gu[o + k + 1], gv[o + k + 1] = (jm == 1 and 0 or 0.5) + (k / SHELL - 0.5) * 2 * span, along
 		end
 		for k = 0, CAVITY do
 			local s = k / CAVITY * 2 - 1
@@ -107,9 +111,10 @@ local function Shade(flip)
 			local c, d = (i - 1) * K + k0, (i - 1) * K + k1
 			local ax, ay, az = gx[b] - gx[a], gy[b] - gy[a], gz[b] - gz[a]
 			local bx, by, bz = gx[d] - gx[c], gy[d] - gy[c], gz[d] - gz[c]
-			local l = Lit((ay * bz - az * by) * flip, (az * bx - ax * bz) * flip, (ax * by - ay * bx) * flip)
+			local l, nx, ny, nz = Lit((ay * bz - az * by) * flip, (az * bx - ax * bz) * flip, (ax * by - ay * bx) * flip)
 			local j = (i - 1) * K + k
-			vr[j], vg[j], vb[j] = min(255, gr[j] * l), min(255, gg[j] * l), min(255, gb[j] * l)
+			local sh = EvilSnake.Sheen(light, 0, gx[j], gy[j], gz[j], nx, ny, nz)
+			vr[j], vg[j], vb[j] = min(255, gr[j] * l + sh), min(255, gg[j] * l + sh), min(255, gb[j] * l + sh)
 			local v = verts[j]
 			if not v then
 				v = Vector()
@@ -122,16 +127,16 @@ end
 
 local function Vert(j)
 	mesh.Position(verts[j])
-	mesh.TexCoord(0, 0, 0)
+	mesh.TexCoord(0, gu[j] or 0, gv[j] or 0)
 	mesh.Color(vr[j], vg[j], vb[j], 255)
 	mesh.AdvanceVertex()
 end
 
-local function Shell()
-	mesh.Begin(MATERIAL_QUADS, (RINGS - 1) * K)
+local function Quads(lo, hi)
+	mesh.Begin(MATERIAL_QUADS, (RINGS - 1) * (hi - lo + 1))
 	for i = 1, RINGS - 1 do
 		local o0, o1 = (i - 1) * K, i * K
-		for k = 1, K do
+		for k = lo, hi do
 			local k2 = k % K + 1
 			Vert(o0 + k)
 			Vert(o0 + k2)
@@ -140,6 +145,13 @@ local function Shell()
 		end
 	end
 	mesh.End()
+end
+
+local function Shell()
+	render.SetMaterial(EvilSnake.SkinMaterial)
+	Quads(1, SHELL)
+	render.SetMaterial(EvilSnake.Material)
+	Quads(SHELL + 1, K)
 end
 
 local tx, ty, tz, th = {}, {}, {}, {}

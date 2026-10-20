@@ -2,7 +2,7 @@ EvilSnake = EvilSnake or {}
 local Body = {}
 EvilSnake.Body = Body
 
-local Bright = EvilSnake.Bright
+local Bright, Sheen = EvilSnake.Bright, EvilSnake.Sheen
 local sqrt, sin, cos, max, min, abs, tan, rad = math.sqrt, math.sin, math.cos, math.max, math.min, math.abs, math.tan, math.rad
 
 local SUB = 4
@@ -21,6 +21,8 @@ local BATCH = 100
 local SPAN = 1.3
 local SWELL_IN = 1
 local NECK = 3
+local SCALE_MIN = 0.25
+local TAU = math.pi * 2
 local UP = Vector(0, 0, 1)
 
 function Body.New()
@@ -60,7 +62,7 @@ local function Detail(pts, R)
 end
 
 local cx, cy, cz, tx, ty, tz, rw, rnr, rax, rlo = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
-local rr, rg, rb = {}, {}, {}
+local rr, rg, rb, rv = {}, {}, {}, {}
 local count = 0
 local cr, cg, cb = 0, 0, 0
 
@@ -187,6 +189,7 @@ local function Rings(pts, bulges, R, link, mouth, sub, up)
 	Widths(m, n - 1, R, bulges, link, sub)
 	Gullet(Vector(sx[1], sy[1], sz[1]), first, widths[1], mouth)
 	local half = sub / 2
+	local along = 0
 	for j = 1, m do
 		local a, b = max(j - 1, 1), min(j + 1, m)
 		local dx, dy, dz = sx[b] - sx[a], sy[b] - sy[a], sz[b] - sz[a]
@@ -197,22 +200,46 @@ local function Rings(pts, bulges, R, link, mouth, sub, up)
 		local seg = math.floor((j - 1) / sub)
 		local joint = min(n, seg + 1 + ((j - 1) % sub >= half and 1 or 0))
 		Ring(sx[j], sy[j], sz[j], dx * il, dy * il, dz * il, widths[j], inv, -slope * inv, joint)
+		if j > 1 then
+			local ex, ey, ez = sx[j] - sx[j - 1], sy[j] - sy[j - 1], sz[j] - sz[j - 1]
+			along = along + sqrt(ex * ex + ey * ey + ez * ez) / (TAU * max(widths[j] / swells[j], R * SCALE_MIN))
+		end
+		rv[count] = along
 	end
 end
 
-local verts, vr, vg, vb = {}, {}, {}, {}
+local verts, vr, vg, vb, vu, vv = {}, {}, {}, {}, {}, {}
 
 local function Vert(i)
 	mesh.Position(verts[i])
-	mesh.TexCoord(0, 0, 0)
+	mesh.TexCoord(0, vu[i], vv[i])
 	mesh.Color(vr[i], vg[i], vb[i], 255)
 	mesh.AdvanceVertex()
+end
+
+local function Strip(a, b, sides)
+	local n = sides + 1
+	for s = a, b, BATCH do
+		local e = min(s + BATCH - 1, b)
+		mesh.Begin(MATERIAL_QUADS, (e - s + 1) * sides)
+		for j = s, e do
+			local r0, r1 = (j - 1) * n, j * n
+			for q = 1, sides do
+				Vert(r0 + q)
+				Vert(r0 + q + 1)
+				Vert(r1 + q + 1)
+				Vert(r1 + q)
+			end
+		end
+		mesh.End()
+	end
 end
 
 function Body.Draw(body, pts, bulges, R, link, mouth, up)
 	up = up or UP
 	if #pts < 2 then return end
 	Relight(body, pts)
+	EvilSnake.Gaze()
 	cr, cg, cb = EvilSnake.Color()
 	local dim = body.dim
 	if dim then cr, cg, cb = cr * dim, cg * dim, cb * dim end
@@ -237,38 +264,31 @@ function Body.Draw(body, pts, bulges, R, link, mouth, up)
 		local bx, by, bz = ay * nz - az * ny, az * nx - ax * nz, ax * ny - ay * nx
 		local w, r, k = rw[j], rnr[j], rax[j]
 		local px, py, pz, o = cx[j], cy[j], cz[j], rlo[j]
-		local r0, g0, b0 = rr[j], rg[j], rb[j]
-		for q = 0, sides - 1 do
+		local r0, g0, b0, along = rr[j], rg[j], rb[j], rv[j] or 0
+		for q = 0, sides do
 			local cs, sn = tr.c[q], tr.s[q]
 			local dx, dy, dz = nx * cs + bx * sn, ny * cs + by * sn, nz * cs + bz * sn
-			local i = (j - 1) * sides + q + 1
+			local i = (j - 1) * (sides + 1) + q + 1
 			local v = verts[i]
 			if not v then
 				v = Vector()
 				verts[i] = v
 			end
-			v:SetUnpacked(px + dx * w, py + dy * w, pz + dz * w)
-			local l = Bright(light, o, dx * r + ax * k, dy * r + ay * k, dz * r + az * k)
-			vr[i], vg[i], vb[i] = min(255, r0 * l), min(255, g0 * l), min(255, b0 * l)
+			local x, y, z = px + dx * w, py + dy * w, pz + dz * w
+			v:SetUnpacked(x, y, z)
+			local mx, my, mz = dx * r + ax * k, dy * r + ay * k, dz * r + az * k
+			local l = Bright(light, o, mx, my, mz)
+			local sh = Sheen(light, o, x, y, z, mx, my, mz)
+			vr[i], vg[i], vb[i] = min(255, r0 * l + sh), min(255, g0 * l + sh), min(255, b0 * l + sh)
+			vu[i], vv[i] = q / sides, along
 		end
 	end
 
 	render.SetMaterial(EvilSnake.Material)
-	for a = 1, count - 1, BATCH do
-		local b = min(a + BATCH - 1, count - 1)
-		mesh.Begin(MATERIAL_QUADS, (b - a + 1) * sides)
-		for j = a, b do
-			local r0, r1 = (j - 1) * sides, j * sides
-			for q = 0, sides - 1 do
-				local q2 = (q + 1) % sides
-				Vert(r0 + q + 1)
-				Vert(r0 + q2 + 1)
-				Vert(r1 + q2 + 1)
-				Vert(r1 + q + 1)
-			end
-		end
-		mesh.End()
-	end
+	Strip(1, BOWL, sides)
+	render.SetMaterial(EvilSnake.SkinMaterial)
+	Strip(BOWL + 1, count - 1, sides)
+	render.SetMaterial(EvilSnake.Material)
 	body.head, body.dir, body.W = headP, headDir, headW
 	EvilSnake.Head.Draw(body.light, headP, headDir, headW, mouth, cr, cg, cb, body.eyes, body.look, up)
 end

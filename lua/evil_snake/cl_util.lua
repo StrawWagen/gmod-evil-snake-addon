@@ -22,6 +22,31 @@ function EvilSnake.Bright(cube, o, nx, ny, nz)
 	return math.min(1.6, 0.08 + math.sqrt(l) * 1.3)
 end
 
+local SHINE, GLOSS, RIM = 10, 0.5, 0.3
+local ex, ey, ez = 0, 0, 0
+
+function EvilSnake.Gaze()
+	ex, ey, ez = EyePos():Unpack()
+end
+
+function EvilSnake.Sheen(cube, o, px, py, pz, nx, ny, nz)
+	local vx, vy, vz = ex - px, ey - py, ez - pz
+	local vl = math.sqrt(vx * vx + vy * vy + vz * vz)
+	if vl < 1e-4 then return 0 end
+	vx, vy, vz = vx / vl, vy / vl, vz / vl
+	local a, b, c, d, e, f = cube[o + 1], cube[o + 2], cube[o + 3], cube[o + 4], cube[o + 5], cube[o + 6]
+	local amb = (a + b + c + d + e + f) / 6
+	local lx, ly, lz = a - b, c - d, e - f + amb
+	local ll = math.sqrt(lx * lx + ly * ly + lz * lz)
+	local nv = 1 - math.abs(nx * vx + ny * vy + nz * vz)
+	local rim = nv * nv * nv * RIM * math.sqrt(amb)
+	if ll < 1e-4 or nx * lx + ny * ly + nz * lz <= 0 then return rim * 255 end
+	local hx, hy, hz = lx / ll + vx, ly / ll + vy, lz / ll + vz
+	local hl = math.sqrt(hx * hx + hy * hy + hz * hz)
+	local s = math.max(0, (nx * hx + ny * hy + nz * hz) / hl)
+	return (s ^ SHINE * GLOSS * math.min(1.2, math.sqrt(ll)) + rim) * 255
+end
+
 function EvilSnake.CatmullRom(p0, p1, p2, p3, t)
 	local t2 = t * t
 	local t3 = t2 * t
