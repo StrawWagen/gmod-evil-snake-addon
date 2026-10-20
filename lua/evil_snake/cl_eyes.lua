@@ -32,15 +32,39 @@ local PUPIL_H = 0.6
 local IRIS_AT = 0.55
 
 local cube
-local scratch = Vector()
+local verts, vr, vg, vb = {}, {}, {}, {}
 
-local function Emit(x, y, z, r, g, b, nx, ny, nz)
+local function Point(k, x, y, z, r, g, b, nx, ny, nz)
+	local v = verts[k]
+	if not v then
+		v = Vector()
+		verts[k] = v
+	end
+	v:SetUnpacked(x, y, z)
 	local l = EvilSnake.Bright(cube, 0, nx, ny, nz)
-	scratch:SetUnpacked(x, y, z)
-	mesh.Position(scratch)
+	vr[k], vg[k], vb[k] = min(255, r * l), min(255, g * l), min(255, b * l)
+end
+
+local function Vert(k)
+	mesh.Position(verts[k])
 	mesh.TexCoord(0, 0, 0)
-	mesh.Color(min(255, r * l), min(255, g * l), min(255, b * l), 255)
+	mesh.Color(vr[k], vg[k], vb[k], 255)
 	mesh.AdvanceVertex()
+end
+
+local function Grid(rows, cols)
+	local stride = cols + 1
+	mesh.Begin(MATERIAL_QUADS, rows * cols)
+	for i = 0, rows - 1 do
+		local o0, o1 = i * stride + 1, (i + 1) * stride + 1
+		for q = 0, cols - 1 do
+			Vert(o0 + q)
+			Vert(o0 + q + 1)
+			Vert(o1 + q + 1)
+			Vert(o1 + q)
+		end
+	end
+	mesh.End()
 end
 
 local function Want(e, base, now, look, head)
@@ -96,8 +120,7 @@ end
 local function Stalk(base, up, tip, side, W, cr, cg, cb)
 	local L = (tip - base):Length()
 	local ctrl = base + up * (L * 0.55)
-	mesh.Begin(MATERIAL_QUADS, SEGS * SIDES)
-	local prev
+	local tr = EvilSnake.Trig(SIDES)
 	for i = 0, SEGS do
 		local t = i / SEGS
 		local a, b = (1 - t) * (1 - t), 2 * (1 - t) * t
@@ -110,59 +133,52 @@ local function Stalk(base, up, tip, side, W, cr, cg, cb)
 		local n2 = tan:Cross(n1)
 		local r = W * Lerp(t, STALK_R, STALK_TIP) * (i % 2 == 1 and 1.18 or 1)
 		local shade = i % 2 == 1 and 0.85 or 1
-		local ring = {}
+		local sr, sg, sb = cr * shade, cg * shade, cb * shade
+		local px, py, pz = p:Unpack()
+		local ax, ay, az = n1:Unpack()
+		local bx, by, bz = n2:Unpack()
+		local o = i * (SIDES + 1) + 1
 		for q = 0, SIDES do
-			local ang = q / SIDES * math.pi * 2
-			local nx = n1 * cos(ang) + n2 * sin(ang)
-			ring[q] = { p + nx * r, nx, cr * shade, cg * shade, cb * shade }
+			local cs, sn = tr.c[q], tr.s[q]
+			local nx, ny, nz = ax * cs + bx * sn, ay * cs + by * sn, az * cs + bz * sn
+			Point(o + q, px + nx * r, py + ny * r, pz + nz * r, sr, sg, sb, nx, ny, nz)
 		end
-		if prev then
-			for q = 0, SIDES - 1 do
-				for _, v in ipairs({ prev[q], prev[q + 1], ring[q + 1], ring[q] }) do
-					Emit(v[1].x, v[1].y, v[1].z, v[3], v[4], v[5], v[2].x, v[2].y, v[2].z)
-				end
-			end
-		end
-		prev = ring
 	end
-	mesh.End()
+	Grid(SEGS, SIDES)
 	local tan = tip - ctrl
 	tan:Normalize()
 	return tan
 end
 
 local function Ball(center, look, r)
-	local right = look:Cross(Vector(0, 0, 1))
-	if right:LengthSqr() < 1e-4 then right = look:Cross(Vector(1, 0, 0)) end
-	right:Normalize()
-	local top = right:Cross(look)
-	mesh.Begin(MATERIAL_QUADS, BALL_RINGS * BALL_SIDES)
-	local function Corner(i, q)
+	local lx, ly, lz = look:Unpack()
+	local rx, ry, rz = ly, -lx, 0
+	if rx * rx + ry * ry < 1e-4 then rx, ry, rz = 0, lz, -ly end
+	local rl = sqrt(rx * rx + ry * ry + rz * rz)
+	rx, ry, rz = rx / rl, ry / rl, rz / rl
+	local ux, uy, uz = ry * lz - rz * ly, rz * lx - rx * lz, rx * ly - ry * lx
+	local ox, oy, oz = center:Unpack()
+	local tr = EvilSnake.Trig(BALL_SIDES)
+	for i = 0, BALL_RINGS do
 		local lat = (i / BALL_RINGS - 0.5) * math.pi
-		local lon = q / BALL_SIDES * math.pi * 2
-		local n = look * sin(lat) + (right * cos(lon) + top * sin(lon)) * cos(lat)
-		local f, s, u = n:Dot(look), n:Dot(right), n:Dot(top)
-		local col = SCLERA
-		if f > 0.3 then
-			local pupil = (s / PUPIL_W) ^ 2 + (u / PUPIL_H) ^ 2
-			if pupil < 1 then
-				col = PUPIL
-			elseif f > IRIS_AT then
-				col = IRIS
+		local f, cl = sin(lat), cos(lat)
+		local o = i * (BALL_SIDES + 1) + 1
+		for q = 0, BALL_SIDES do
+			local s, u = tr.c[q] * cl, tr.s[q] * cl
+			local nx, ny, nz = lx * f + rx * s + ux * u, ly * f + ry * s + uy * u, lz * f + rz * s + uz * u
+			local col = SCLERA
+			if f > 0.3 then
+				local pupil = (s / PUPIL_W) ^ 2 + (u / PUPIL_H) ^ 2
+				if pupil < 1 then
+					col = PUPIL
+				elseif f > IRIS_AT then
+					col = IRIS
+				end
 			end
-		end
-		local p = center + n * r
-		Emit(p.x, p.y, p.z, col[1], col[2], col[3], n.x, n.y, n.z)
-	end
-	for i = 0, BALL_RINGS - 1 do
-		for q = 0, BALL_SIDES - 1 do
-			Corner(i, q)
-			Corner(i, q + 1)
-			Corner(i + 1, q + 1)
-			Corner(i + 1, q)
+			Point(o + q, ox + nx * r, oy + ny * r, oz + nz * r, col[1], col[2], col[3], nx, ny, nz)
 		end
 	end
-	mesh.End()
+	Grid(BALL_RINGS, BALL_SIDES)
 end
 
 function Eyes.Draw(state, light, stalks, head, W, look, cr, cg, cb)
