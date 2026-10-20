@@ -107,6 +107,7 @@ end
 function Tongue:Drop(snake)
 	local ent = self.ent
 	self.ent, self.rag, self.pos = nil, nil, nil
+	snake:Unstruggle(ent)
 	if IsValid(ent) and Evil.Owner(ent) == snake then Evil.LetGo(ent, LET_GO) end
 	if self.state ~= IN then self:Back() end
 end
@@ -144,6 +145,7 @@ function Tongue:Wrap(snake, ent, now)
 	self.k, self.at, self.stuck, self.late = 0, now, 0, 0
 	self.writhe, self.pull = now, now + math.Rand(PULL_GAP[1], PULL_GAP[2])
 	snake.Prey = nil
+	snake:Struggle(ent)
 	Say(snake, table.Random(SLAP), 1, self.tip)
 	Evil.Frighten(self.tip, FEAR_RANGE, FEAR, true)
 	hook.Run("EvilSnakeTongued", snake, ent)
@@ -169,10 +171,8 @@ function Tongue:Lash(snake, now, dt, on)
 		return self:Back()
 	end
 	self.tip = tip
-	if Setting("hunt_npcs") ~= 0 then
-		local hit = self:Lick(snake, from, tip)
-		if hit then return self:Wrap(snake, hit, now) end
-	end
+	local hit = self:Lick(snake, from, tip)
+	if hit then return self:Wrap(snake, hit, now) end
 	if self.len >= self.max then self:Back() end
 end
 

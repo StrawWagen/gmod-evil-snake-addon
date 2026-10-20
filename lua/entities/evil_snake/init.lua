@@ -30,6 +30,9 @@ local DREAD = 4
 local GRAB_FEAR = 30
 local GRAB_FEAR_RANGE = 900
 local FAST = 4
+local ESCAPE_PUSH = 350
+local ESCAPE_UP = 220
+local ESCAPE_GRACE = 4
 local SPLASH = { "ambient/water/water_splash1.wav", "ambient/water/water_splash2.wav", "ambient/water/water_splash3.wav" }
 local SPLASH_GAP = 0.5
 local SPLASH_LEVEL = 75
@@ -114,9 +117,16 @@ function ENT:SendBody(ply)
 	if ply then net.Send(ply) else net.Broadcast() end
 end
 
+local function Unseen(ply)
+	local f = ply.EvilFrozen
+	if f then return f.notarget end
+	return ply:IsFlagSet(FL_NOTARGET) or GetConVar("ai_ignoreplayers"):GetBool()
+end
+
 function EvilSnake.Edible(ent, snake)
-	return IsValid(ent) and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
-		and Evil.Claimable(ent, snake)
+	if not IsValid(ent) or CurTime() < (ent.EvilSnakeFree or 0) or not Evil.Claimable(ent, snake) then return false end
+	if ent:IsPlayer() then return Setting("hunt_players") ~= 0 and ent:Alive() and not Unseen(ent) end
+	return Setting("hunt_npcs") ~= 0 and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
 end
 
 local Edible = EvilSnake.Edible
@@ -216,12 +226,14 @@ function ENT:Grab(ent, now)
 	local fast = not ent:IsPlayer() and Setting("instant_npcs") ~= 0
 	self.Held = {
 		ent = ent, at = now, hold = fast and 0 or Setting("hold_time"), pace = fast and FAST or 1,
-		size = EvilSnake.BulgeSize(size), prey = size,
+		size = EvilSnake.BulgeSize(size), prey = size, from = ent:GetPos(),
 	}
 	if not Evil.Pose(ent, self, { act = ACT_BARNACLE_PULL }) then
 		self.Held = nil
+		self:Unstruggle(ent)
 		return
 	end
+	self:Struggle(ent, EvilSnake.HoldLength(self.Held.hold) / self.Held.pace)
 	self.Prey = nil
 	self:Bite(size)
 	Evil.Frighten(self:Mouth(), GRAB_FEAR_RANGE, GRAB_FEAR, true)
@@ -229,14 +241,49 @@ function ENT:Grab(ent, now)
 	hook.Run("EvilSnakeGrabbed", self, ent)
 end
 
+function ENT:Struggle(ent, time)
+	local presses = Setting("escape_presses")
+	if not ent:IsPlayer() or presses <= 0 then return end
+	local m = Evil.Mashing(ent)
+	Evil.Mash(ent, self, {
+		gain = 1 / presses, time = time, start = m and m.source == self and m.progress or 0,
+		done = function() self:Escape(ent) end,
+	})
+end
+
+function ENT:Unstruggle(ent)
+	local m = IsValid(ent) and ent:IsPlayer() and Evil.Mashing(ent)
+	if m and m.source == self then Evil.StopMash(ent) end
+end
+
+function ENT:Escape(ent)
+	ent.EvilSnakeFree = CurTime() + ESCAPE_GRACE
+	if self.Tongue.ent == ent then return self.Tongue:Drop(self) end
+	local held = self.Held
+	if not held or held.ent ~= ent then return end
+	self:Release()
+	ent:SetVelocity(self.Tongue.fwd * ESCAPE_PUSH + Vector(0, 0, ESCAPE_UP))
+	hook.Run("EvilSnakeEscaped", self, ent)
+end
+
+local function Free(ent, pos, snake)
+	return not util.TraceHull({
+		start = pos, endpos = pos, mins = ent:OBBMins(), maxs = ent:OBBMaxs(),
+		mask = ent:IsPlayer() and MASK_PLAYERSOLID or MASK_NPCSOLID, filter = { ent, snake },
+	}).StartSolid
+end
+
 function ENT:Release()
 	local held = self.Held
 	self.Held = nil
 	self.Dirty = true
-	if not held or Evil.Owner(held.ent) ~= self then return end
+	if not held then return end
 	local ent = held.ent
+	self:Unstruggle(ent)
+	if Evil.Owner(ent) ~= self then return end
 	Evil.Unpose(ent, self)
-	ent:SetPos(self:Mouth())
+	local mouth = self:Mouth()
+	ent:SetPos(Free(ent, mouth, self) and mouth or held.from)
 	ent:SetAngles(Angle(0, ent:GetAngles().y, 0))
 	hook.Run("EvilSnakeReleased", self, ent)
 end
@@ -245,18 +292,20 @@ function ENT:Hold(now)
 	local held = self.Held
 	if not held then return end
 	local ent = held.ent
-	if Evil.Owner(ent) ~= self then
-		self.Held = nil
-		self.Dirty = true
-		return
-	end
+	if Evil.Owner(ent) ~= self or (ent:IsPlayer() and not ent:Alive()) then return self:Release() end
 	self.Dirty = true
 	if (now - held.at) * held.pace < EvilSnake.HoldLength(held.hold) then return end
 	self.Held = nil
 	local v = self.Stomach:Swallow(ent, GULP_AT)
 	self:Chomp(held.prey)
 	hook.Run("EvilSnakeSwallowed", self, v, ent)
-	ent:Remove()
+	if ent:IsPlayer() then
+		self:Unstruggle(ent)
+		Evil.Unpose(ent, self)
+		ent:KillSilent()
+	else
+		ent:Remove()
+	end
 	self.NextDecide = now
 end
 
@@ -279,7 +328,7 @@ function ENT:Catch(now)
 	local mouth = self:Mouth()
 	local from = self.LastMouth or mouth
 	self.LastMouth = mouth
-	if self.Held or self.Tongue:Busy() or Setting("hunt_npcs") == 0 then return end
+	if self.Held or self.Tongue:Busy() then return end
 	local reach = Setting("bite_reach")
 	local travel = from:Distance(mouth)
 	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
@@ -319,9 +368,7 @@ function ENT:Decide(now)
 
 	local prey = self.Prey
 	local range = Setting("sight_range")
-	if Setting("hunt_npcs") == 0 then
-		prey = nil
-	elseif not Edible(prey, self) or head:Distance(prey:WorldSpaceCenter()) > range * LOSE then
+	if not Edible(prey, self) or head:Distance(prey:WorldSpaceCenter()) > range * LOSE then
 		prey = self:FindPrey(head)
 	end
 	self.Prey = prey

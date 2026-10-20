@@ -3,8 +3,12 @@ EvilSnake = EvilSnake or {}
 EvilSnake.SETTINGS = {
 	{ name = "hunt_npcs", default = 1, min = 0, max = 1, label = "Hunts NPCs",
 		help = "Goes after NPCs and swallows them. At 0 it leaves them alone" },
+	{ name = "hunt_players", default = 1, min = 0, max = 1, label = "Hunts players",
+		help = "Goes after players and swallows them. At 0 it leaves them alone" },
+	{ name = "escape_presses", default = 12, min = 0, max = 60, decimals = 0, label = "Escape presses",
+		help = "How many times a grabbed player has to hit jump to break free. At 0 there is no getting out" },
 	{ name = "sight_range", default = 3000, min = 0, max = 10000, decimals = 0, label = "Sight range",
-		help = "How far away it notices NPCs" },
+		help = "How far away it notices prey" },
 	{ name = "bite_reach", default = 24, min = 0, max = 200, decimals = 0, label = "Bite reach",
 		help = "How close its mouth has to get to someone to grab them" },
 	{ name = "hold_time", default = 3, min = 0, max = 15, decimals = 1, label = "Swallow time",
@@ -76,22 +80,26 @@ EvilSnake.SETTINGS = {
 
 EvilSnake.PRESETS = {
 	{ name = "chill", label = "Chill", values = {
-		hunt_npcs = 1, sight_range = 800, bite_reach = 16, hold_time = 5, bulge_size = 2.2, bulge_speed = 35,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 8,
+		sight_range = 800, bite_reach = 16, hold_time = 5, bulge_size = 2.2, bulge_speed = 35,
 		growth = 1, fattening = 0.25, girth_max = 3.5, learning = 0.5, habituation = 1,
 		wander = 1, hunt_speed = 80, wander_speed = 30, turn_rate = 70, sway = 45, wavelength = 220,
 	} },
 	{ name = "normal", label = "Normal", values = {
-		hunt_npcs = 1, sight_range = 3000, bite_reach = 24, hold_time = 3, bulge_size = 1.8, bulge_speed = 80,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 12,
+		sight_range = 3000, bite_reach = 24, hold_time = 3, bulge_size = 1.8, bulge_speed = 80,
 		growth = 2, fattening = 0.15, girth_max = 3, learning = 1, habituation = 0.5,
 		wander = 1, hunt_speed = 170, wander_speed = 60, turn_rate = 120, sway = 35, wavelength = 150,
 	} },
 	{ name = "aggressive", label = "Aggressive", values = {
-		hunt_npcs = 1, sight_range = 5500, bite_reach = 40, hold_time = 2, bulge_size = 1.6, bulge_speed = 180,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 15,
+		sight_range = 5500, bite_reach = 40, hold_time = 2, bulge_size = 1.6, bulge_speed = 180,
 		growth = 4, fattening = 0.12, girth_max = 3, learning = 1.5, habituation = 0.3,
 		wander = 1, hunt_speed = 320, wander_speed = 110, turn_rate = 240, sway = 25, wavelength = 120,
 	} },
 	{ name = "unhinged", label = "Unhinged", values = {
-		hunt_npcs = 1, sight_range = 10000, bite_reach = 90, hold_time = 0.8, bulge_size = 2.8, bulge_speed = 600,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 20,
+		sight_range = 10000, bite_reach = 90, hold_time = 0.8, bulge_size = 2.8, bulge_speed = 600,
 		growth = 12, fattening = 0.4, girth_max = 6, learning = 4, habituation = 0,
 		wander = 1, hunt_speed = 700, wander_speed = 280, turn_rate = 600, sway = 60, wavelength = 70,
 	} },
