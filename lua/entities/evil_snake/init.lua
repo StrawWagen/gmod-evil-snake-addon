@@ -226,7 +226,7 @@ function EvilSnake.Edible(ent, snake)
 	if not IsValid(ent) or CurTime() < (ent.EvilSnakeFree or 0) or not Evil.Claimable(ent, snake) then return false end
 	if EvilSnake.Full(snake) then return false end
 	if ent:IsPlayer() then return Setting("hunt_players") ~= 0 and ent:Alive() and not Unseen(ent) end
-	return Setting("hunt_npcs") ~= 0 and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
+	return Setting("hunt_npcs") ~= 0 and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0 and not ent.EvilFungusAsleep
 end
 
 local Edible = EvilSnake.Edible
@@ -931,6 +931,7 @@ function ENT:Think()
 		if not self:Limp() then self:Catch(now) end
 		self.Hitbox:Think(now)
 		self:Regen(now, dt)
+		EvilSnake.Smear(self, now)
 	end
 	if self.Tongue:Think(self, now, dt) then self.Dirty = true end
 	if alive then

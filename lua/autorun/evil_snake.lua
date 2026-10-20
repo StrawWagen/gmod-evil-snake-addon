@@ -22,6 +22,7 @@ if SERVER then
 	include("evil_snake/sv_brain.lua")
 	include("evil_snake/sv_stomach.lua")
 	include("evil_snake/sv_tongue.lua")
+	include("evil_snake/sv_fungus.lua")
 	include("evil_snake/sv_debug.lua")
 	include("evil_snake/sv_stomach_view.lua")
 else
