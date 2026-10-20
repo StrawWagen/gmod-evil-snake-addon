@@ -166,7 +166,7 @@ function Skin.Load()
 		file.CreateDir("evil_snake")
 		file.Write(PATH, Skin.PNG())
 	end
-	local png = Material("../data/" .. PATH, "mips smooth noclamp")
+	local png = Material("data/" .. PATH, "mips smooth noclamp")
 	if png and not png:IsError() then
 		EvilSnake.SkinMaterial:SetTexture("$basetexture", png:GetTexture("$basetexture"))
 	end

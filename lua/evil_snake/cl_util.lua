@@ -22,7 +22,7 @@ function EvilSnake.Bright(cube, o, nx, ny, nz)
 	return math.min(1.6, 0.08 + math.sqrt(l) * 1.3)
 end
 
-local SHINE, GLOSS, RIM = 10, 0.5, 0.3
+local SHINE, GLOSS, RIM = 16, 0.45, 0.12
 local ex, ey, ez = 0, 0, 0
 
 function EvilSnake.Gaze()
