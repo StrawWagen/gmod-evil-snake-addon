@@ -38,6 +38,13 @@ local STICK = 1
 local CLING_GRIP = 1
 local HUG = 0.5
 local UP_EASE = 6
+local LOOK = 3
+local NECK = 2
+local DODGE = 1.5
+local DODGE_HEIGHT = 1.5
+local OPEN_LOOK = 6
+local OPENINGS = 12
+local BLOCKED = 0.25
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -344,6 +351,55 @@ local function Collide(c, i, from, to, along, gravity)
 	return final, climbed
 end
 
+local function Dodge(c)
+	local x, hull = c.x, c.hull
+	local head = x[1]
+	local r = hull[1] / HULL
+	local link = Chain.Link(c)
+	local yaw = math.rad(c.yaw)
+	local fx, fy = math.cos(yaw), math.sin(yaw)
+	local px, py = 0, 0
+	for i = 3, #x do
+		local ri = hull[i] / HULL
+		local p = x[i]
+		local dx, dy, dz = p.x - head.x, p.y - head.y, p.z - head.z
+		if (i - 1) * link >= (r + ri) * NECK and math.abs(dz) < (r + ri) * DODGE_HEIGHT and dx * fx + dy * fy > 0 then
+			local reach = r * LOOK + ri
+			local d2 = dx * dx + dy * dy
+			if d2 < reach * reach and d2 > 1e-4 then
+				local d = math.sqrt(d2)
+				local w = 1 - d / reach
+				px, py = px - dx / d * w, py - dy / d * w
+			end
+		end
+	end
+	return px, py
+end
+
+function Chain.Opening(c)
+	local x, hull = c.x, c.hull
+	local head = x[1] + UP
+	local r = hull[1] / HULL
+	local len = r * OPEN_LOOK
+	local base = math.Rand(0, 360)
+	local best, bestScore
+	for k = 0, OPENINGS - 1 do
+		local yaw = base + k * 360 / OPENINGS
+		local dir = Angle(0, yaw, 0):Forward()
+		local tr = Hull(c, 1, head, head + dir * len)
+		local score = tr.StartSolid and 0 or tr.Fraction
+		for i = 3, #x do
+			local d = x[i] - head
+			local along = d:Dot(dir)
+			if along > 0 and along < len and (d - dir * along):Length() < r + hull[i] / HULL then
+				score = score - BLOCKED
+			end
+		end
+		if not bestScore or score > bestScore then best, bestScore = yaw, score end
+	end
+	return best
+end
+
 local function Steer(c)
 	local wave = Setting("wavelength")
 	local sway = Setting("sway")
@@ -361,8 +417,14 @@ local function Steer(c)
 		c.yaw = Chain.HeadYaw(c) - c.sway * math.sin(c.phase)
 		Reseed(c)
 	end
+	local goal = c.goal
+	local px, py = Dodge(c)
+	if px ~= 0 or py ~= 0 then
+		local g = math.rad(goal)
+		goal = math.deg(math.atan2(math.sin(g) + py * DODGE, math.cos(g) + px * DODGE))
+	end
 	local turn = Setting("turn_rate") * (c.quick or 1)
-	local diff = math.AngleDifference(c.goal, c.yaw)
+	local diff = math.AngleDifference(goal, c.yaw)
 	local want = diff * AIM
 	if dist then
 		local chase = math.deg(2 * math.sin(math.rad(diff)) * c.speed / dist)

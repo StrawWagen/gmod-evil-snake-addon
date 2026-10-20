@@ -856,7 +856,7 @@ function ENT:Decide(now)
 			self.Stuck = 0
 			c.climb = -c.climb
 			if IsValid(self.Prey) and self:Above(self.Prey, head) then EvilSnake.Watch(self.Prey, "climbed") end
-			self.WanderYaw = yaw + 180 + math.Rand(-60, 60)
+			self.WanderYaw = EvilSnake.Chain.Opening(c)
 			self.NextWander = now + math.Rand(WANDER_TIME[1], WANDER_TIME[2])
 			self.DetourUntil = now + DETOUR
 		end
