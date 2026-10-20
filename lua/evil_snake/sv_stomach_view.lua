@@ -26,6 +26,7 @@ local function Summary(ent)
 	local mind = ent.Mind
 	local knows = {}
 	for i, aspect in ipairs(EvilSnake.ASPECTS) do knows[i] = { aspect, Round(mind:Knows(aspect)) } end
+	knows[#knows + 1] = { "untenable", Round(ent.Steadied or 0) }
 	return {
 		base = ent.BaseSegments, length = Round(ent:GetLength()), girth = Round(ent:GetGirth()),
 		power = Round(mind.power), level = Round(mind:Level()), knows = knows,

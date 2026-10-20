@@ -128,6 +128,17 @@ function Chain.LetGo(c, seconds)
 	c.awake, c.still = true, 0
 end
 
+function Chain.Limp(c, seconds)
+	Chain.LetGo(c, seconds)
+	c.speed, c.want, c.aim, c.driving = 0, 0, nil, false
+end
+
+function Chain.Kick(c, i, vel)
+	c.old[i] = c.old[i] - vel * DT
+	if vel.z > 0 then c.cn[i], c.cd[i] = nil, nil end
+	c.awake, c.still = true, 0
+end
+
 function Chain.Surface(c)
 	local normal = c.cn[1]
 	if not normal then return end
