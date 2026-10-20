@@ -11,6 +11,7 @@ function ENT:SetupDataTables()
 	self:NetworkVar("Float", 0, "Girth")
 	self:NetworkVar("Float", 1, "Length")
 	self:NetworkVar("Float", 2, "Slide")
+	self:NetworkVar("Float", 3, "Digest")
 	self:NetworkVar("Entity", 0, "Prey")
 end
 

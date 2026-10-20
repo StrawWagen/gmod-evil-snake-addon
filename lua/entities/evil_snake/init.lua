@@ -36,6 +36,22 @@ local ESCAPE_GRACE = 4
 local SPLASH = { "ambient/water/water_splash1.wav", "ambient/water/water_splash2.wav", "ambient/water/water_splash3.wav" }
 local SPLASH_GAP = 0.5
 local SPLASH_LEVEL = 75
+local MASH_DECAY = 0.15
+local HEARD = 3
+local LEAD_MAX = 2
+local QUICKER = 0.8
+local NIMBLE = 1
+local LONGER = 0.5
+local GRIP = 0.75
+local REEL = 1
+local GULP_FASTER = 0.5
+local TIRE = 1
+local DIGEST = 1.5
+local KEEP = 1
+local HEAR = 2
+local SMELL = 1.5
+local DREAD_MORE = 1
+local PICKY = 3
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -71,7 +87,36 @@ function ENT:Initialize()
 	self.Stomach.onDigest = function(v) self:Absorb(v) end
 	self.Mind = EvilSnake.Brain.New()
 	self.Tongue = EvilSnake.Tongue.New()
-	Evil.Presence(self, { reach = PRESENCE_REACH, dread = DREAD, near = self.Nearest })
+	self:SetDigest(1)
+	self:Sharpen()
+end
+
+function ENT:Sharpen()
+	local mind = self.Mind
+	local s = self.Sharp or {}
+	self.Sharp = s
+	local agility, strength, hunger, fear = mind:Edge("agility"), mind:Edge("strength"), mind:Edge("hunger"), mind:Edge("fear")
+	s.speed = 1 + QUICKER * mind:Edge("energy")
+	s.turn = 1 + NIMBLE * agility
+	s.reach = 1 + LONGER * agility
+	s.lick = 1 + LONGER * agility
+	s.grip = 1 + GRIP * strength
+	s.reel = 1 + REEL * strength
+	s.gulp = 1 + GULP_FASTER * strength
+	s.tire = 1 + TIRE * mind:Edge("resilience")
+	s.digest = 1 + DIGEST * hunger
+	s.keep = 1 + KEEP * hunger
+	s.hear = 1 + HEAR * mind:Edge("firearms")
+	s.smell = 1 + SMELL * fear
+	s.dread = 1 + DREAD_MORE * fear
+	s.picky = PICKY * mind:Edge("cunning")
+	s.lead = math.min(mind:Edge("tactics"), 1)
+	self.Chain.quick = s.turn
+	if math.abs(self:GetDigest() - s.digest) > 1e-3 then self:SetDigest(s.digest) end
+	if self.Dreading ~= s.dread then
+		self.Dreading = s.dread
+		Evil.Presence(self, { reach = PRESENCE_REACH * s.dread, dread = DREAD * s.dread, near = self.Nearest })
+	end
 end
 
 function ENT:Nearest(pos)
@@ -140,15 +185,39 @@ function ENT:Mouth()
 	return head + (head - neck):GetNormalized() * EvilSnake.HeadRadius(r)
 end
 
+hook.Add("EntityFireBullets", "EvilSnakeHeard", function(ent)
+	ent.EvilSnakeShot = CurTime()
+end)
+
+function ENT:Noticed()
+	return Setting("sight_range") * math.max(self.Sharp.hear, self.Sharp.smell)
+end
+
 function ENT:FindPrey(from)
-	local best, bestDist = nil, Setting("sight_range") ^ 2
-	for _, ent in ipairs(ents.FindInSphere(from, Setting("sight_range"))) do
+	local sight, s = Setting("sight_range"), self.Sharp
+	local now = CurTime()
+	local best, bestScore
+	for _, ent in ipairs(ents.FindInSphere(from, self:Noticed())) do
 		if Edible(ent, self) then
-			local d = from:DistToSqr(ent:WorldSpaceCenter())
-			if d < bestDist then best, bestDist = ent, d end
+			local d = from:Distance(ent:WorldSpaceCenter())
+			local reach = sight
+			if now - (ent.EvilSnakeShot or -math.huge) < HEARD then reach = sight * s.hear end
+			if Evil.Afraid(ent) then reach = math.max(reach, sight * s.smell) end
+			local score = d / (1 + s.picky * EvilSnake.Worth(ent))
+			if d < reach and (not bestScore or score < bestScore) then best, bestScore = ent, score end
 		end
 	end
 	return best
+end
+
+function ENT:Lead(prey, from)
+	local aim = prey:WorldSpaceCenter()
+	local lead = self.Sharp.lead
+	if lead <= 0 then return aim end
+	local vel = prey:GetVelocity()
+	vel.z = 0
+	local speed = math.max(Setting("hunt_speed") * self.Sharp.speed, 1)
+	return aim + vel * (math.min(from:Distance(aim) / speed, LEAD_MAX) * lead)
 end
 
 function ENT:Grow()
@@ -165,12 +234,14 @@ end
 
 function ENT:Absorb(v)
 	local lessons = self.Mind:Learn(v)
+	self:Sharpen()
 	self:Grow()
 	hook.Run("EvilSnakeAbsorbed", self, v, lessons)
 end
 
 function ENT:Rethink()
 	self.Mind = EvilSnake.Brain.Rebuild(self.Stomach.victims)
+	self:Sharpen()
 	self.Stomach.rev = (self.Stomach.rev + 1) % 65536
 	self:Grow()
 end
@@ -227,7 +298,7 @@ function ENT:Grab(ent, now)
 	local size = EvilSnake.PreySize(ent)
 	local fast = not ent:IsPlayer() and Setting("instant_npcs") ~= 0
 	self.Held = {
-		ent = ent, at = now, hold = fast and 0 or Setting("hold_time"), pace = fast and FAST or 1,
+		ent = ent, at = now, hold = fast and 0 or Setting("hold_time") / self.Sharp.gulp, pace = fast and FAST or 1,
 		size = EvilSnake.BulgeSize(size), prey = size, from = ent:GetPos(),
 	}
 	if not Evil.Pose(ent, self, { act = ACT_BARNACLE_PULL }) then
@@ -238,7 +309,7 @@ function ENT:Grab(ent, now)
 	self:Struggle(ent, EvilSnake.HoldLength(self.Held.hold) / self.Held.pace)
 	self.Prey = nil
 	self:Bite(size)
-	Evil.Frighten(self:Mouth(), GRAB_FEAR_RANGE, GRAB_FEAR, true)
+	Evil.Frighten(self:Mouth(), GRAB_FEAR_RANGE * self.Sharp.dread, GRAB_FEAR, true)
 	self.Dirty = true
 	hook.Run("EvilSnakeGrabbed", self, ent)
 end
@@ -248,7 +319,7 @@ function ENT:Struggle(ent, time)
 	if not ent:IsPlayer() or presses <= 0 then return end
 	local m = Evil.Mashing(ent)
 	Evil.Mash(ent, self, {
-		gain = 1 / presses, time = time, start = m and m.source == self and m.progress or 0,
+		gain = 1 / (presses * self.Sharp.grip), decay = MASH_DECAY * self.Sharp.tire, time = time, start = m and m.source == self and m.progress or 0,
 		done = function() self:Escape(ent) end,
 	})
 end
@@ -260,6 +331,7 @@ end
 
 function ENT:Escape(ent)
 	ent.EvilSnakeFree = CurTime() + ESCAPE_GRACE
+	EvilSnake.Watch(ent, "slipped")
 	if self.Tongue.ent == ent then return self.Tongue:Drop(self) end
 	local held = self.Held
 	if not held or held.ent ~= ent then return end
@@ -332,7 +404,7 @@ function ENT:Catch(now)
 	local from = self.LastMouth or mouth
 	self.LastMouth = mouth
 	if self.Held or self.Tongue:Busy() then return end
-	local reach = Setting("bite_reach")
+	local reach = Setting("bite_reach") * self.Sharp.reach
 	local travel = from:Distance(mouth)
 	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
 	for _, ent in ipairs(ents.FindInSphere((from + mouth) * 0.5, reach + travel * 0.5)) do
@@ -370,22 +442,24 @@ function ENT:Decide(now)
 	self.LastHead = Vector(head)
 
 	local prey = self.Prey
-	local range = Setting("sight_range")
-	if not Edible(prey, self) or head:Distance(prey:WorldSpaceCenter()) > range * LOSE then
+	local edible = Edible(prey, self)
+	if not edible or head:Distance(prey:WorldSpaceCenter()) > self:Noticed() * LOSE * self.Sharp.keep then
+		if edible then EvilSnake.Watch(prey, "outran") end
 		prey = self:FindPrey(head)
 	end
 	self.Prey = prey
 	if self:GetPrey() ~= (prey or NULL) then self:SetPrey(prey or NULL) end
 
 	if prey and now >= (self.DetourUntil or 0) then
-		local to = prey:WorldSpaceCenter() - head
-		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed"), prey:WorldSpaceCenter())
+		local aim = self:Lead(prey, head)
+		local to = aim - head
+		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed") * self.Sharp.speed, aim)
 	elseif prey or Setting("wander") ~= 0 then
 		if now >= (self.NextWander or 0) then
 			self.WanderYaw = self.WanderYaw + math.Rand(-WANDER_TURN, WANDER_TURN)
 			self.NextWander = now + math.Rand(WANDER_TIME[1], WANDER_TIME[2])
 		end
-		EvilSnake.Chain.Drive(c, self.WanderYaw, Setting("wander_speed"))
+		EvilSnake.Chain.Drive(c, self.WanderYaw, Setting("wander_speed") * self.Sharp.speed)
 	else
 		EvilSnake.Chain.Drive(c, yaw, 0)
 	end
@@ -396,8 +470,9 @@ function ENT:Think()
 	local dt = now - self.LastThink
 	self.LastThink = now
 	local c = self.Chain
-	if now >= (self.NextDecide or 0) then
+	if now >= (self.NextDecide or 0) or not self.Sharp then
 		self.NextDecide = now + DECIDE
+		self:Sharpen()
 		self:Grow()
 		self:Decide(now)
 	elseif #self.Stomach.transit > 0 then
@@ -414,7 +489,7 @@ function ENT:Think()
 	self:Catch(now)
 	if self.Tongue:Think(self, now, dt) then self.Dirty = true end
 	self:Hold(now)
-	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c)) then self.Dirty = true end
+	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c), self.Sharp.digest) then self.Dirty = true end
 	if self.Dirty and now >= (self.NextSend or 0) then
 		self.Dirty = false
 		self.NextSend = now + EvilSnake.SEND

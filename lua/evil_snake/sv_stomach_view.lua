@@ -18,7 +18,7 @@ local function Record(v)
 	return {
 		n = v.n, name = v.name, class = v.class, model = v.model, steamid = v.steamid, kind = v.kind,
 		weapon = v.weapon, health = v.health, size = Round(v.size), mass = Round(v.mass), brain = v.brain,
-		at = v.at, digested = v.digested or nil, lessons = Lessons(v),
+		at = v.at, digested = v.digested or nil, lessons = Lessons(v), tricks = v.tricks,
 	}
 end
 

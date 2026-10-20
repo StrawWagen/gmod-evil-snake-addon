@@ -37,6 +37,8 @@ EvilSnake.SETTINGS = {
 		help = "How much it takes from the minds of what it eats" },
 	{ name = "habituation", default = 0.5, min = 0, max = 5, decimals = 2, label = "Habituation",
 		help = "How fast eating the same kind of thing over and over stops teaching it anything" },
+	{ name = "wits", default = 1, min = 0, max = 3, decimals = 2, label = "Uses what it learns",
+		help = "How much everything it has learned from what it ate makes it faster, stronger and sharper. At 0 it learns but never uses any of it" },
 	{ name = "wander", default = 1, min = 0, max = 1, label = "Wanders",
 		help = "Crawls around on its own when there is nothing to hunt" },
 	{ name = "hunt_speed", default = 170, min = 0, max = 1000, decimals = 0, label = "Hunting speed",
@@ -84,25 +86,25 @@ EvilSnake.PRESETS = {
 	{ name = "chill", label = "Chill", values = {
 		hunt_npcs = 1, hunt_players = 1, escape_presses = 8,
 		sight_range = 800, bite_reach = 16, hold_time = 5, bulge_size = 2.2, bulge_speed = 35,
-		growth = 1, fattening = 0.25, girth_max = 3.5, learning = 0.5, habituation = 1,
+		growth = 1, fattening = 0.25, girth_max = 3.5, learning = 0.5, habituation = 1, wits = 0.5,
 		wander = 1, hunt_speed = 80, wander_speed = 30, turn_rate = 70, sway = 45, wavelength = 220,
 	} },
 	{ name = "normal", label = "Normal", values = {
 		hunt_npcs = 1, hunt_players = 1, escape_presses = 12,
 		sight_range = 3000, bite_reach = 24, hold_time = 3, bulge_size = 1.8, bulge_speed = 80,
-		growth = 2, fattening = 0.15, girth_max = 3, learning = 1, habituation = 0.5,
+		growth = 2, fattening = 0.15, girth_max = 3, learning = 1, habituation = 0.5, wits = 1,
 		wander = 1, hunt_speed = 170, wander_speed = 60, turn_rate = 120, sway = 35, wavelength = 150,
 	} },
 	{ name = "aggressive", label = "Aggressive", values = {
 		hunt_npcs = 1, hunt_players = 1, escape_presses = 15,
 		sight_range = 5500, bite_reach = 40, hold_time = 2, bulge_size = 1.6, bulge_speed = 180,
-		growth = 4, fattening = 0.12, girth_max = 3, learning = 1.5, habituation = 0.3,
+		growth = 4, fattening = 0.12, girth_max = 3, learning = 1.5, habituation = 0.3, wits = 1.5,
 		wander = 1, hunt_speed = 320, wander_speed = 110, turn_rate = 240, sway = 25, wavelength = 120,
 	} },
 	{ name = "unhinged", label = "Unhinged", values = {
 		hunt_npcs = 1, hunt_players = 1, escape_presses = 20,
 		sight_range = 10000, bite_reach = 90, hold_time = 0.8, bulge_size = 2.8, bulge_speed = 600,
-		growth = 12, fattening = 0.4, girth_max = 6, learning = 4, habituation = 0,
+		growth = 12, fattening = 0.4, girth_max = 6, learning = 4, habituation = 0, wits = 3,
 		wander = 1, hunt_speed = 700, wander_speed = 280, turn_rate = 600, sway = 60, wavelength = 70,
 	} },
 }

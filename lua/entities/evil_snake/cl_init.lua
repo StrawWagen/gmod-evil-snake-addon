@@ -163,7 +163,7 @@ function ENT:Think()
 	local pose, snap, later, u = Sample(snaps, rt)
 	self.Pose = pose
 	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
-	local ahead = math.max(rt - snap.fed, 0) * EvilSnake.Setting("bulge_speed") / self.Link
+	local ahead = math.max(rt - snap.fed, 0) * EvilSnake.Setting("bulge_speed") * math.max(self:GetDigest(), 1) / self.Link
 	local bulges, fattest, mine = {}, 1, nil
 	local me = LocalPlayer()
 	for i, m in ipairs(snap.meals) do

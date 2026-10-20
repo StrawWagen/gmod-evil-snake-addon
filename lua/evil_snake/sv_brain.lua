@@ -58,13 +58,35 @@ local RESONANCE = {
 	fear = { cunning = 0.3 },
 }
 
+local TRICKS = {
+	slipped = { full = 3, teach = { strength = 0.6, resilience = 0.4 } },
+	outran = { full = 3, teach = { energy = 0.6, tactics = 0.4 } },
+	dodged = { full = 3, teach = { agility = 0.6, cunning = 0.3 } },
+}
+EvilSnake.TRICKS = TRICKS
+
+local full = {}
+for trick, t in pairs(TRICKS) do full[trick] = t.full end
+EvilSnake.Souls = Evil.SoulDigestion({ id = "evil_snake", tricks = full })
+
+function EvilSnake.Watch(ply, trick)
+	EvilSnake.Souls:Watch(ply, trick)
+end
+
 function EvilSnake.Kind(ent)
 	if ent:IsPlayer() then return "player" end
 	return ent:IsNPC() and KINDS[ent:Classify()] or "thing"
 end
 
-function EvilSnake.Brainpower(kind)
-	return (KINDS_INFO[kind] or KINDS_INFO.thing).brain
+function EvilSnake.Brainpower(kind, tricks)
+	local base = (KINDS_INFO[kind] or KINDS_INFO.thing).brain
+	local brain = base
+	for _, k in pairs(tricks or {}) do brain = brain + base * k end
+	return brain
+end
+
+function EvilSnake.Worth(ent)
+	return EvilSnake.Brainpower(EvilSnake.Kind(ent), ent:IsPlayer() and EvilSnake.Souls:Skills(ent) or nil)
 end
 
 function Brain.New()
@@ -91,7 +113,14 @@ local function Teaches(v)
 	local teach = table.Copy((KINDS_INFO[v.kind] or KINDS_INFO.thing).teach)
 	if v.weapon then teach.firearms = (teach.firearms or 0) + ARMED end
 	if v.size > 1 then teach.strength = (teach.strength or 0) + (v.size - 1) * BULK end
+	for trick, k in pairs(v.tricks or {}) do
+		for aspect, w in pairs(TRICKS[trick] and TRICKS[trick].teach or {}) do teach[aspect] = (teach[aspect] or 0) + w * k end
+	end
 	return teach
+end
+
+function Brain:Edge(aspect)
+	return self:Knows(aspect) * Setting("wits")
 end
 
 function Brain:Resonance(aspect)

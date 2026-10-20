@@ -20,7 +20,7 @@ function Stomach:Add(v)
 	v.kind = v.kind or "thing"
 	v.size = v.size or 1
 	v.mass = v.mass or v.size
-	v.brain = v.brain or EvilSnake.Brainpower(v.kind)
+	v.brain = v.brain or EvilSnake.Brainpower(v.kind, v.tricks)
 	v.digested = v.digested or false
 	self.victims[v.n] = v
 	return v
@@ -57,6 +57,7 @@ function Stomach:Record(ent)
 		weapon = Weapon(ent),
 		health = ent:GetMaxHealth(),
 		size = EvilSnake.PreySize(ent),
+		tricks = player and EvilSnake.Souls:Digest(ent) or nil,
 	})
 end
 
@@ -143,10 +144,10 @@ hook.Add("PlayerDeathThink", "EvilSnakeInside", function(ply)
 	return false
 end)
 
-function Stomach:Digest(dt, links, link)
+function Stomach:Digest(dt, links, link, pace)
 	local transit = self.transit
 	if #transit == 0 then return false end
-	local rate = Setting("bulge_speed") / link * dt
+	local rate = Setting("bulge_speed") * (pace or 1) / link * dt
 	for i = #transit, 1, -1 do
 		local m = transit[i]
 		m.at = m.at + rate

@@ -115,7 +115,7 @@ end
 function Tongue:Try(snake, now)
 	self.next = now + TRY
 	local mouth, fwd = self.mouth, self.fwd
-	local reach = Setting("tongue_reach")
+	local reach = Setting("tongue_reach") * snake.Sharp.lick
 	local prey = snake.Prey
 	if IsValid(prey) and Lickable(prey, snake) then
 		local aim = prey:WorldSpaceCenter()
@@ -173,7 +173,10 @@ function Tongue:Lash(snake, now, dt, on)
 	self.tip = tip
 	local hit = self:Lick(snake, from, tip)
 	if hit then return self:Wrap(snake, hit, now) end
-	if self.len >= self.max then self:Back() end
+	if self.len >= self.max then
+		if target then EvilSnake.Watch(target, "dodged") end
+		self:Back()
+	end
 end
 
 function Tongue:Writhe(rag, now)
@@ -199,7 +202,7 @@ function Tongue:Reel(snake, now, dt, on)
 	self.tip = at
 	local goal = self.mouth + self.up * (ent:OBBMaxs().z * HANG)
 	local span = math.max(self.from:Distance(goal), 1)
-	self.k = math.min(self.k + Setting("tongue_reel") * dt / span, 1)
+	self.k = math.min(self.k + Setting("tongue_reel") * snake.Sharp.reel * dt / span, 1)
 	local s = Smooth(self.k)
 	local t = now - self.at
 	local side = self.fwd:Cross(UP)

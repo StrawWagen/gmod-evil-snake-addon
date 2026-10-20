@@ -198,6 +198,7 @@ function View:PaintInfo(w, h)
 	y = Pair("Segments", ("+%.2f"):format(v.segments or 0), w, y)
 	y = Pair("Girth", ("+%.3f"):format(v.girth or 0), w, y)
 	y = Pair("Brainpower", ("%.2f"):format(v.brain), w, y)
+	for trick, k in SortedPairs(v.tricks or {}) do y = Pair(Title(trick), ("%.2f"):format(k), w, y) end
 	if not v.lessons then return end
 	y = y + 6
 	draw.SimpleText("Lessons", "DermaDefaultBold", 0, y, TEXT)

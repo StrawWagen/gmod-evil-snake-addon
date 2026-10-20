@@ -281,7 +281,7 @@ local function Steer(c)
 		c.yaw = Chain.HeadYaw(c) - c.sway * math.sin(c.phase)
 		Reseed(c)
 	end
-	local turn = Setting("turn_rate")
+	local turn = Setting("turn_rate") * (c.quick or 1)
 	local diff = math.AngleDifference(c.goal, c.yaw)
 	local want = diff * AIM
 	if dist then

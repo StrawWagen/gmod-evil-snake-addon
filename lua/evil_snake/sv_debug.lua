@@ -29,6 +29,9 @@ concommand.Add("evil_snake_mind", function(ply)
 			knows[#knows + 1] = ("%s %.2f"):format(aspect, mind:Knows(aspect))
 		end
 		Say(ply, "  knows: " .. table.concat(knows, ", "))
+		local edges = {}
+		for name, k in SortedPairs(ent.Sharp or {}) do edges[#edges + 1] = ("%s %.2f"):format(name, k) end
+		Say(ply, "  edge: " .. table.concat(edges, ", "))
 		local seen = {}
 		for kind, n in SortedPairs(mind.seen) do seen[#seen + 1] = kind .. " x" .. n end
 		if #seen > 0 then Say(ply, "  ate: " .. table.concat(seen, ", ")) end
