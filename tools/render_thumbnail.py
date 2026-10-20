@@ -25,40 +25,37 @@ SHELL = 32
 CAVITY = 24
 TEX_SIZE = 1024
 
-HEAD_AT = (-2160, -1460, 0)
-FACING = -90
+HEAD_AT = (-2120, -1450, 0)
+FACING = -120
 PATH = [
-    (0, 0, 36),
-    (-14, -2, 40),
-    (-30, -3, 36),
-    (-42, -2, 22),
-    (-50, 2, 0),
-    (-62, 25, 0),
-    (-88, 60, 0),
-    (-128, 70, 0),
-    (-162, 35, 0),
-    (-186, -20, 0),
-    (-215, -60, 0),
-    (-260, -72, 0),
-    (-300, -38, 0),
-    (-330, 20, 0),
-    (-362, 60, 0),
-    (-402, 72, 0),
-    (-445, 50, 0),
-    (-480, 20, 0),
+    (0, 0, 38),
+    (-14, -3, 42),
+    (-30, -4, 38),
+    (-42, -2, 24),
+    (-52, 4, 0),
+    (-75, -32, 0),
+    (-110, -50, 0),
+    (-150, -28, 0),
+    (-185, 28, 0),
+    (-220, 85, 0),
+    (-265, 115, 0),
+    (-320, 112, 0),
+    (-362, 78, 0),
+    (-390, 30, 0),
+    (-420, -10, 0),
 ]
-GAPE = 0.42
-LIFT = 0.45
-TONGUE_REACH = 2.4
-TONGUE_DROP = -0.25
-TONGUE_SWAY = 0.35
+GAPE = 0.34
+LIFT = 0.3
+TONGUE_REACH = 2.2
+TONGUE_RISE = 0.05
+TONGUE_SWAY = 0.6
 
 SUN = 4
-SKY = 0.5
+SKY = 0.55
 LAMP = 0.6
-CAMERA = dict(at=(135, -40, 58), look=(-70, 5, 18), lens=35, fstop=5.6)
+CAMERA = dict(at=(120, -100, 115), look=(-75, 28, 18), lens=37, fstop=5.6)
 SIZE = (1024, 1024)
-EXPOSURE = 0.2
+EXPOSURE = 0.1
 
 THROAT = (120, 28, 38)
 TONGUE = (230, 110, 140)
@@ -70,7 +67,7 @@ PUPIL = (8, 6, 6)
 MAW, GULLET, BOWL, RIB, DARK = 0.85, 0.9, 7, 0.12, 0.1
 LENGTH, HAMMER, FLAT, BOXY, SWEEP, FRONT, LIPIN, HOLLOW, CROWN = 2.3, 2.1, 0.58, 3.2, 0.35, 0.22, 0.88, 0.75, 0.25
 STALK_AT, STALK_OUT, STALK, STALK_R, STALK_TIP, STALK_SEGS, BALL = 0.7, 0.8, 1.05, 0.1, 0.055, 7, 0.25
-ALERT_UPRIGHT, ALERT_REACH, LEAN = 0.7, 1.15, 0.9
+STALK_UPRIGHT, STALK_REACH, LEAN = 1.2, 1.0, 0.9
 PUPIL_W, PUPIL_H, IRIS_AT = 0.22, 0.6, 0.55
 TONGUE_ROOT_AT, TONGUE_LIP, TONGUE_LEAD, TONGUE_WIDTH, TONGUE_TAPER = 0.4, 2, 0.3, 0.26, 0.65
 FORK, FORK_SPREAD = 0.6, 0.5
@@ -215,7 +212,7 @@ def materials(img):
         col.layer_name = "Col"
         return m, nt, bsdf, col
 
-    skin, nt, bsdf, col = base("SnakeSkin", 0.48, 0.12, 0.05)
+    skin, nt, bsdf, col = base("SnakeSkin", 0.55, 0.1, 0.05)
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = img
     tex.interpolation = "Cubic"
@@ -499,9 +496,9 @@ def eyes(p, dir, W, look, mat):
         out = (place(x, y + side, z) - root).normalized()
         up = (up + out * 0.35).normalized()
         to = (look - root).normalized()
-        aim = (up * ALERT_UPRIGHT + to * LEAN).normalized()
+        aim = (up * STALK_UPRIGHT + to * LEAN).normalized()
         L = W * STALK
-        tip = root + aim * (L * ALERT_REACH)
+        tip = root + aim * (L * STALK_REACH)
         span = (tip - root).length
         ctrl = root + up * (span * 0.55)
         pts, radii, shades = [], [], []
@@ -550,11 +547,11 @@ def ball(centre, look, r, verts, faces, cols):
             faces.append((b + q, b + q2, a + q2, a + q))
 
 
-def tongue(p, dir, W, look, mat):
+def tongue(p, dir, W, mat):
     right, up = head_frame(p, dir)
     root = p + dir * (W * TONGUE_ROOT_AT)
     lip = p + dir * (W * TONGUE_LIP)
-    reach = (dir + up * TONGUE_DROP + right * TONGUE_SWAY).normalized()
+    reach = (dir + right * TONGUE_SWAY + up * TONGUE_RISE).normalized()
     tip = lip + reach * (W * TONGUE_REACH)
     ctrl = lip + dir * ((tip - lip).length * TONGUE_LEAD)
     along = (tip - root).normalized()
@@ -634,7 +631,7 @@ def main():
     p, dir, W = body_mesh(pts, (skin, flesh), (fwd + UP * LIFT).normalized())
     head_mesh(p, dir, W, (skin, flesh))
     eyes(p, dir, W, cam_pos, eye)
-    tongue(p, dir, W, cam_pos, flesh)
+    tongue(p, dir, W, flesh)
 
     cam_data = bpy.data.cameras.new("Camera")
     cam_data.lens = CAMERA["lens"]
