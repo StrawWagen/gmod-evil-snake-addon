@@ -78,6 +78,9 @@ local LIMP_MAX = 4
 local SMALLEST = 0.25
 local BLAST = bit.bor(DMG_BLAST, DMG_BLAST_SURFACE)
 local NUDGE = 0.15
+local REPATH = 1
+local LEVEL = 48
+local WAYPOINT = 32
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -766,12 +769,47 @@ function ENT:Drop(prey, head)
 	end
 end
 
+function ENT:Level(at, head)
+	return math.abs(at.z - head.z) <= Setting("step_height") + self:Radius() * 2 + LEVEL
+end
+
+function ENT:Front(prey, head, aim)
+	local fwd = Angle(0, prey:GetAngles().y, 0):Forward()
+	local tr = util.TraceLine({ start = aim, endpos = aim + fwd * math.abs(aim.z - head.z), mask = MASK_SOLID_BRUSHONLY })
+	return tr.HitPos - fwd * (tr.Hit and self:Radius() * 2 or 0)
+end
+
+function ENT:Goal(prey, head, now)
+	local aim = self:Lead(prey, head)
+	if self:Level(aim, head) and Clear(self, head, prey) then
+		self.Route = nil
+		return aim
+	end
+	local route = self.Route
+	if not route or route.prey ~= prey or now >= route.redo then
+		local r = self:Radius()
+		local rise = self.Chain.walls > 0 and math.huge or Setting("step_height") + r
+		route = { prey = prey, pts = EvilSnake.Path.Find(head, prey:WorldSpaceCenter(), rise), i = 1, redo = now + REPATH }
+		self.Route = route
+	end
+	local pts = route.pts
+	if not pts then return self:Front(prey, head, aim) end
+	local near = self:Radius() * 2 + WAYPOINT
+	while route.i < #pts do
+		local at = pts[route.i]
+		if (at.x - head.x) ^ 2 + (at.y - head.y) ^ 2 > near * near then break end
+		route.i = route.i + 1
+	end
+	if route.i >= #pts then return aim end
+	return pts[route.i] + Vector(0, 0, self:Radius())
+end
+
 function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
 	local yaw = EvilSnake.Chain.HeadYaw(c)
 	if self.Held or self.Tongue:Busy() then
-		self.Prey, self.LastHead = nil, nil
+		self.Prey, self.LastHead, self.Route = nil, nil, nil
 		if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
 		EvilSnake.Chain.Drive(c, yaw, 0)
 		return
@@ -804,7 +842,7 @@ function ENT:Decide(now)
 	if self:GetPrey() ~= (prey or NULL) then self:SetPrey(prey or NULL) end
 
 	if prey and now >= (self.DetourUntil or 0) then
-		local aim = self:Lead(prey, head)
+		local aim = self:Goal(prey, head, now)
 		local to = aim - head
 		local r = self:Radius()
 		if to.z > r then c.climb = 1 elseif to.z < -r then c.climb = -1 end
