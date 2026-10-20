@@ -77,6 +77,7 @@ local LIMP_TIME = 1.5
 local LIMP_MAX = 4
 local SMALLEST = 0.25
 local BLAST = bit.bor(DMG_BLAST, DMG_BLAST_SURFACE)
+local NUDGE = 0.15
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -719,6 +720,18 @@ end
 
 local Reaches = EvilSnake.Reaches
 
+function EvilSnake.Clear(snake, from, ent, near)
+	local filter = function(e)
+		return e ~= snake and e ~= ent and not e.EvilHitboxOwner and not e:IsPlayer() and not e:IsNPC() and e:GetClass() ~= "evil_snake"
+	end
+	local center = ent:WorldSpaceCenter()
+	if not util.TraceLine({ start = from, endpos = center, mask = MASK_SOLID, filter = filter }).Hit then return true end
+	local edge = LerpVector(NUDGE, ent:NearestPoint(near or from), center)
+	return not util.TraceLine({ start = from, endpos = edge, mask = MASK_SOLID, filter = filter }).Hit
+end
+
+local Clear = EvilSnake.Clear
+
 function ENT:Catch(now)
 	local mouth = self:Mouth()
 	local from = self.LastMouth or mouth
@@ -728,7 +741,7 @@ function ENT:Catch(now)
 	local travel = from:Distance(mouth)
 	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
 	for _, ent in ipairs(ents.FindInSphere((from + mouth) * 0.5, reach + travel * 0.5)) do
-		if Edible(ent, self) and Reaches(ent, from, mouth, steps, reach) then
+		if Edible(ent, self) and Reaches(ent, from, mouth, steps, reach) and Clear(self, self.Chain.x[1], ent, mouth) then
 			self:Grab(ent, now)
 			return
 		end
@@ -748,7 +761,7 @@ function ENT:Drop(prey, head)
 	end
 	local at = prey:WorldSpaceCenter()
 	local reach = self:Radius() * 2 + Setting("bite_reach") * self.Sharp.reach
-	if at.z < head.z and (at.x - head.x) ^ 2 + (at.y - head.y) ^ 2 < reach * reach then
+	if at.z < head.z and (at.x - head.x) ^ 2 + (at.y - head.y) ^ 2 < reach * reach and Clear(self, head, prey) then
 		EvilSnake.Chain.LetGo(c, DROP_TIME)
 	end
 end

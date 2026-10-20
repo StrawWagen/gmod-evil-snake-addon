@@ -137,7 +137,7 @@ function Tongue:Lick(snake, from, to)
 	local travel = from:Distance(to)
 	local steps = math.max(math.ceil(travel / LICK), 1)
 	for _, ent in ipairs(ents.FindInSphere((from + to) * 0.5, LICK + travel * 0.5)) do
-		if Lickable(ent, snake) and EvilSnake.Reaches(ent, from, to, steps, LICK) then return ent end
+		if Lickable(ent, snake) and EvilSnake.Reaches(ent, from, to, steps, LICK) and EvilSnake.Clear(snake, from, ent, to) then return ent end
 	end
 end
 
