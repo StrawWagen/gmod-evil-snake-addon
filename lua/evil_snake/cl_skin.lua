@@ -3,7 +3,6 @@ local Skin = {}
 EvilSnake.Skin = Skin
 
 local floor, abs, max, min, sin = math.floor, math.abs, math.max, math.min, math.sin
-local band, bxor, rshift, bnot = bit.band, bit.bxor, bit.rshift, bit.bnot
 
 local SIZE = 256
 local COLUMNS = 18
@@ -12,7 +11,6 @@ local BELLY = 0.13
 local SCUTES = 16
 local BLOTCH = 3
 local VERSION = 1
-local PATH = "evil_snake/skin_v" .. VERSION .. ".png"
 
 local function Hash(x, y)
 	local h = sin(x * 127.1 + y * 311.7) * 43758.5453
@@ -92,84 +90,43 @@ function Skin.Texel(u, v)
 	return g, g, min(1, g * (1 + 0.05 * (1 - belly)))
 end
 
-local crc
-local function CRC(s, c)
-	if not crc then
-		crc = {}
-		for i = 0, 255 do
-			local x = i
-			for _ = 1, 8 do
-				x = band(x, 1) == 1 and bxor(rshift(x, 1), 0xEDB88320) or rshift(x, 1)
-			end
-			crc[i] = x
-		end
-	end
-	c = bnot(c or 0)
-	for i = 1, #s do
-		c = bxor(crc[band(bxor(c, s:byte(i)), 255)], rshift(c, 8))
-	end
-	return bnot(c)
-end
-
-local function U32(n)
-	n = n % 4294967296
-	return string.char(floor(n / 16777216) % 256, floor(n / 65536) % 256, floor(n / 256) % 256, n % 256)
-end
-
-local function Chunk(kind, data)
-	return U32(#data) .. kind .. data .. U32(CRC(kind .. data) % 4294967296)
-end
-
-local function Deflate(raw)
-	local out, a, b = { "\120\1" }, 1, 0
-	local n = #raw
-	for i = 1, n, 65535 do
-		local block = raw:sub(i, min(i + 65534, n))
-		local len = #block
-		out[#out + 1] = string.char(i + 65535 > n and 1 or 0, len % 256, floor(len / 256), 255 - len % 256, 255 - floor(len / 256)) .. block
-	end
-	for i = 1, n do
-		a = (a + raw:byte(i)) % 65521
-		b = (b + a) % 65521
-	end
-	out[#out + 1] = U32(b * 65536 + a)
-	return table.concat(out)
-end
-
-function Skin.PNG(size)
-	size = size or SIZE
-	local rows, line = {}, {}
-	for y = 0, size - 1 do
-		line[1] = 0
-		local v = (y + 0.5) / size
-		for x = 0, size - 1 do
-			local r, g, b = Skin.Texel((x + 0.5) / size, v)
-			local k = x * 3
-			line[k + 2], line[k + 3], line[k + 4] = floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)
-		end
-		rows[y + 1] = string.char(unpack(line))
-	end
-	local head = U32(size) .. U32(size) .. "\8\2\0\0\0"
-	return "\137PNG\r\n\26\n" .. Chunk("IHDR", head) .. Chunk("IDAT", Deflate(table.concat(rows))) .. Chunk("IEND", "")
-end
-
 if not CLIENT then return end
 
-EvilSnake.SkinMaterial = CreateMaterial("evil_snake_skin", "UnlitGeneric", {
-	["$basetexture"] = "vgui/white",
+local rt = GetRenderTargetEx("evil_snake_skin_" .. VERSION, SIZE, SIZE, RT_SIZE_NO_CHANGE, MATERIAL_RT_DEPTH_NONE, 0, 0, IMAGE_FORMAT_RGBA8888)
+
+EvilSnake.SkinMaterial = CreateMaterial("evil_snake_skin_" .. VERSION, "UnlitGeneric", {
+	["$basetexture"] = rt:GetName(),
 	["$vertexcolor"] = 1,
 	["$nocull"] = 1,
 })
 
-function Skin.Load()
-	if not file.Exists(PATH, "DATA") then
-		file.CreateDir("evil_snake")
-		file.Write(PATH, Skin.PNG())
+function Skin.Paint()
+	render.PushRenderTarget(rt)
+	render.Clear(255, 255, 255, 255)
+	cam.Start2D()
+	for y = 0, SIZE - 1 do
+		local v = (y + 0.5) / SIZE
+		local start, pr, pg, pb = 0
+		for x = 0, SIZE do
+			local r, g, b = -1, -1, -1
+			if x < SIZE then
+				r, g, b = Skin.Texel((x + 0.5) / SIZE, v)
+				r, g, b = floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)
+			end
+			if r ~= pr or g ~= pg or b ~= pb then
+				if pr then
+					surface.SetDrawColor(pr, pg, pb, 255)
+					surface.DrawRect(start, y, x - start, 1)
+				end
+				start, pr, pg, pb = x, r, g, b
+			end
+		end
 	end
-	local png = Material("data/" .. PATH, "mips smooth noclamp")
-	if png and not png:IsError() then
-		EvilSnake.SkinMaterial:SetTexture("$basetexture", png:GetTexture("$basetexture"))
-	end
+	cam.End2D()
+	render.PopRenderTarget()
 end
 
-Skin.Load()
+hook.Add("PreRender", "EvilSnakeSkin", function()
+	hook.Remove("PreRender", "EvilSnakeSkin")
+	Skin.Paint()
+end)
