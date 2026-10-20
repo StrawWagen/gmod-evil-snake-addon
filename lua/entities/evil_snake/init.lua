@@ -205,8 +205,16 @@ local function Unseen(ply)
 	return ply:IsFlagSet(FL_NOTARGET) or GetConVar("ai_ignoreplayers"):GetBool()
 end
 
+function EvilSnake.Full(snake)
+	local max = Setting("max_meals")
+	if max <= 0 then return false end
+	local pending = (snake.Held and 1 or 0) + (IsValid(snake.Tongue.ent) and 1 or 0)
+	return snake.Stomach:Count() + pending >= max
+end
+
 function EvilSnake.Edible(ent, snake)
 	if not IsValid(ent) or CurTime() < (ent.EvilSnakeFree or 0) or not Evil.Claimable(ent, snake) then return false end
+	if EvilSnake.Full(snake) then return false end
 	if ent:IsPlayer() then return Setting("hunt_players") ~= 0 and ent:Alive() and not Unseen(ent) end
 	return Setting("hunt_npcs") ~= 0 and ent:IsNPC() and ent:GetClass() ~= "npc_bullseye" and ent:Health() > 0
 end
