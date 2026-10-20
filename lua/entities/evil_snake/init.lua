@@ -879,14 +879,19 @@ end
 function ENT:Crawl(c, head, tr, spot, to)
 	local on = EvilSnake.Chain.Surface(c)
 	local n = tr.HitNormal
-	if on == "wall" and c.climb ~= 0 then
+	local r = self:Radius()
+	if on == "wall" then
 		local out = Vector(c.cn[1].x, c.cn[1].y, 0)
 		out:Normalize()
-		local along = Vector(to.x, to.y, 0)
-		along = along - out * along:Dot(out)
-		return head + along - out * math.abs(to.z)
+		local flat = Vector(to.x, to.y, 0)
+		local away = flat:Dot(out)
+		if math.abs(to.z) <= r then c.climb = away > 0 and -1 or 1 end
+		return head + flat - out * away - out * math.max(math.abs(to.z), math.abs(away))
 	end
-	if math.abs(n.z) < FOLLOW_STEEP then return tr.HitPos - n * self:Radius() * FOLLOW_INTO end
+	if on == "ceiling" and n.z > -FOLLOW_STEEP and to.z < -r and to.x ^ 2 + to.y ^ 2 < (r * 2 + WAYPOINT) ^ 2 then
+		EvilSnake.Chain.LetGo(c, DROP_TIME)
+	end
+	if math.abs(n.z) < FOLLOW_STEEP then return tr.HitPos - n * r * FOLLOW_INTO end
 	if n.z <= -FOLLOW_STEEP and on ~= "ceiling" then return self:WallNear(head, spot) or spot end
 	return spot
 end
@@ -906,7 +911,7 @@ function ENT:Follow(c, head)
 		EvilSnake.Chain.Drive(c, EvilSnake.Chain.HeadYaw(c), 0)
 		return true
 	end
-	c.climb = to.z > r and 1 or to.z < -r and -1 or 0
+	c.climb = to.z < -r and -1 or 1
 	local aim = c.fly and spot or self:Crawl(c, head, tr, spot, to)
 	to = aim - head
 	local speed = Setting(c.fly and "fly_speed" or "hunt_speed") * self.Sharp.speed
