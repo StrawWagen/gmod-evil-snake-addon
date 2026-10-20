@@ -32,6 +32,8 @@ local FEAR = 30
 local FEAR_RANGE = 900
 local WRITHE = { 0.12, 0.4 }
 local WRITHE_PUSH = 220
+local THRASH_LIMBS = 3
+local THRASH_PUSH = 420
 local PULL_GAP = { 0.6, 1.2 }
 local WHIP = "weapons/iceaxe/iceaxe_swing1.wav"
 local SLAP = { "physics/flesh/flesh_impact_hard1.wav", "physics/flesh/flesh_impact_hard2.wav", "physics/flesh/flesh_impact_hard3.wav" }
@@ -176,6 +178,16 @@ function Tongue:Lash(snake, now, dt, on)
 	if self.len >= self.max then
 		if target then EvilSnake.Watch(target, "dodged") end
 		self:Back()
+	end
+end
+
+function Tongue:Thrash()
+	local rag = self.rag
+	if not IsValid(rag) then return end
+	local n = rag:GetPhysicsObjectCount()
+	for _ = 1, THRASH_LIMBS do
+		local phys = rag:GetPhysicsObjectNum(math.random(0, n - 1))
+		if IsValid(phys) then phys:AddVelocity(VectorRand() * THRASH_PUSH) end
 	end
 end
 

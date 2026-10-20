@@ -72,7 +72,14 @@ function ENT:EvilPose(victim)
 	local pose = self.Pose
 	if not pose then return end
 	local head, neck = EvilSnake.HeadPoints(pose[1], pose[2], self:Radius(), self.Up)
-	local pos, ang, f, mouth = EvilSnake.HeldPlace(head, neck, victim:OBBMaxs().z * (self.HeldDepth or 0), self.Up)
+	local depth = victim:OBBMaxs().z * (self.HeldDepth or 0)
+	local pos, ang, f, mouth = EvilSnake.HeldPlace(head, neck, depth, self.Up)
+	local roll, tilt, lunge = EvilSnake.Thrash(victim)
+	if roll then
+		ang:RotateAroundAxis(ang:Forward(), roll)
+		ang:RotateAroundAxis(ang:Right(), tilt)
+		pos = mouth - ang:Up() * (depth - lunge)
+	end
 	return pos, ang, f, f:Dot(mouth)
 end
 

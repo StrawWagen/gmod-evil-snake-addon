@@ -37,6 +37,8 @@ local SPLASH = { "ambient/water/water_splash1.wav", "ambient/water/water_splash2
 local SPLASH_GAP = 0.5
 local SPLASH_LEVEL = 75
 local MASH_DECAY = 0.15
+local THRASH_WRAP = 1000
+local THRASH_LOUD = 0.35
 local HEARD = 3
 local LEAD_MAX = 2
 local QUICKER = 0.8
@@ -329,7 +331,17 @@ function ENT:Struggle(ent, time)
 	Evil.Mash(ent, self, {
 		gain = 1 / (presses * self.Sharp.grip), decay = MASH_DECAY * self.Sharp.tire, time = time, start = m and m.source == self and m.progress or 0,
 		done = function() self:Escape(ent) end,
+		press = function() self:Thrash(ent) end,
 	})
+end
+
+function ENT:Thrash(ent)
+	ent:SetNW2Int("EvilSnakeThrash", ent:GetNW2Int("EvilSnakeThrash", 0) % THRASH_WRAP + 1)
+	if self.Tongue.ent == ent then self.Tongue:Thrash() end
+	local pitch, level, loud = self:Voice(1)
+	if pitch then
+		sound.Play(table.Random(SQUISH), ent:WorldSpaceCenter(), level, pitch * math.Rand(1, 1.25), loud * THRASH_LOUD)
+	end
 end
 
 function ENT:Unstruggle(ent)
