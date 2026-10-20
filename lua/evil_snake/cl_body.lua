@@ -250,7 +250,7 @@ function Body.Draw(body, pts, bulges, R, link, mouth, up)
 	Rings(pts, bulges or {}, R, link, mouth, sub, up)
 	local tr = EvilSnake.Trig(sides)
 	local light = body.light
-	local nx, ny, nz = 0, 0, 1
+	local nx, ny, nz = up.x, up.y, up.z
 	for j = 1, count do
 		local ax, ay, az = tx[j], ty[j], tz[j]
 		local d = nx * ax + ny * ay + nz * az
