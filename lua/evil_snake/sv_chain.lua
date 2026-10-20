@@ -247,8 +247,9 @@ local function Touch(c, i, pos, dir)
 	return true
 end
 
-local function Contact(c, i, pos, hit)
+local function Contact(c, i, pos, hit, ahead)
 	local prev, lead = c.cn[i], i > 1 and c.cn[i - 1] or nil
+	if ahead and (c.walls > 0 or c.ceilings > 0) and Touch(c, i, pos, ahead) then return end
 	if i == 1 and hit and Touch(c, i, pos, hit.z >= FLOOR and -UP or -hit) then return end
 	if Touch(c, i, pos, -UP) then return end
 	if Steep(c, prev) and Touch(c, i, pos, -prev) then return end
@@ -312,6 +313,12 @@ end
 
 local function Collide(c, i, from, to, along, gravity)
 	local normal = c.cn[i]
+	local ahead
+	if i == 1 then
+		ahead = to - from
+		if normal then ahead = ahead - normal * ahead:Dot(normal) end
+		ahead = ahead:LengthSqr() > 1e-4 and ahead:GetNormalized() or nil
+	end
 	if normal then
 		local move = to - from
 		local into = move:Dot(normal)
@@ -343,7 +350,7 @@ local function Collide(c, i, from, to, along, gravity)
 			if stepped then final, climbed, hit = stepped, true, nil end
 		end
 	end
-	Contact(c, i, final, hit)
+	Contact(c, i, final, hit, ahead)
 	if not c.cn[i] and Steep(c, normal) and normal.z > -FLOOR then
 		local top = Over(c, i, final, normal)
 		if top then
