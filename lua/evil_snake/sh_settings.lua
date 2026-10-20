@@ -47,6 +47,8 @@ EvilSnake.SETTINGS = {
 		help = "How much everything it has learned from what it ate makes it faster, stronger and sharper. At 0 it learns but never uses any of it" },
 	{ name = "wander", default = 1, min = 0, max = 1, label = "Wanders",
 		help = "Crawls around on its own when there is nothing to hunt" },
+	{ name = "wall_addiction", default = 0, min = 0, max = 1, label = "Wall addiction",
+		help = "Always grips walls and ceilings, heads for the nearest wall whenever it wanders onto the floor and never drops off the ceiling on its own" },
 	{ name = "fungus_smear", default = 10, min = 0, max = 60, decimals = 0, label = "Fungus smear", needs = "EvilFungus",
 		help = "Seconds it keeps smearing fresh fungus behind it after crawling through live fungus. At 0 it never picks any up" },
 	{ name = "hunt_speed", default = 170, min = 0, max = 1000, decimals = 0, label = "Hunting speed",

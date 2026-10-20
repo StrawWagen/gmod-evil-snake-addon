@@ -164,6 +164,7 @@ function ENT:Sharpen()
 	c.quick = s.turn
 	c.walls = math.min(1, mind:Edge("walls") * CLING)
 	c.ceilings = math.min(1, mind:Edge("ceilings") * CLING)
+	if Setting("wall_addiction") ~= 0 then c.walls, c.ceilings = 1, 1 end
 	if math.abs(self:GetDigest() - s.digest) > 1e-3 then self:SetDigest(s.digest) end
 	if self.Dreading ~= s.dread then
 		self.Dreading = s.dread
@@ -808,7 +809,7 @@ function ENT:Drop(prey, head)
 	local c = self.Chain
 	if EvilSnake.Chain.Surface(c) ~= "ceiling" then return end
 	if not prey then
-		if math.random() < DROP_CHANCE then EvilSnake.Chain.LetGo(c, DROP_TIME) end
+		if Setting("wall_addiction") == 0 and math.random() < DROP_CHANCE then EvilSnake.Chain.LetGo(c, DROP_TIME) end
 		return
 	end
 	local at = prey:WorldSpaceCenter()
@@ -980,7 +981,15 @@ function ENT:Decide(now)
 			c.climb = math.random() < 0.5 and 1 or -1
 			if not prey then self:Drop(nil, head) end
 		end
-		EvilSnake.Chain.Drive(c, self.WanderYaw, Setting("wander_speed") * self.Sharp.speed, c.fly and self:Cruise(head, self.WanderYaw) or nil)
+		local aim = c.fly and self:Cruise(head, self.WanderYaw) or nil
+		if not prey and not c.fly and Setting("wall_addiction") ~= 0 and EvilSnake.Chain.Surface(c) == "floor" then
+			local wall = self:WallNear(head, head)
+			if wall then
+				aim, c.climb = wall, 1
+				self.WanderYaw = math.deg(math.atan2(wall.y - head.y, wall.x - head.x))
+			end
+		end
+		EvilSnake.Chain.Drive(c, self.WanderYaw, Setting("wander_speed") * self.Sharp.speed, aim)
 	else
 		EvilSnake.Chain.Drive(c, yaw, 0)
 	end
