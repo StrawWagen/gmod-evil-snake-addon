@@ -2,11 +2,13 @@ EvilSnake = EvilSnake or {}
 local Body = {}
 EvilSnake.Body = Body
 
-local Bright, CatmullRom = EvilSnake.Bright, EvilSnake.CatmullRom
-local sqrt, sin, cos, max, min, abs = math.sqrt, math.sin, math.cos, math.max, math.min, math.abs
+local Bright = EvilSnake.Bright
+local sqrt, sin, cos, max, min, abs, tan, rad = math.sqrt, math.sin, math.cos, math.max, math.min, math.abs, math.tan, math.rad
 
 local SUB = 4
-local SIDES = 20
+local SIDES = { 20, 8 }
+local SPACING = 0.55
+local DETAIL = { 12, 90 }
 local BOWL = 7
 local MAW = 0.85
 local GULLET = 0.9
@@ -35,6 +37,9 @@ function Body.Bounds(pts, fattest, R)
 end
 
 local function Relight(body, pts)
+	local frame = FrameNumber()
+	if body.frame == frame then return end
+	body.frame = frame
 	local n, light = #pts, body.light
 	for i = 1, n do
 		if not light[i * 6] then EvilSnake.SampleLight(pts[i], light, (i - 1) * 6) end
@@ -43,6 +48,14 @@ local function Relight(body, pts)
 		body.lit = body.lit % n + 1
 		EvilSnake.SampleLight(pts[body.lit], light, (body.lit - 1) * 6)
 	end
+end
+
+local function Detail(pts, R)
+	local eye = EyePos()
+	local best = math.huge
+	for i = 1, #pts do best = min(best, pts[i]:DistToSqr(eye)) end
+	local view = sqrt(best) * tan(rad(render.GetViewSetup().fov * 0.5)) / R
+	return math.Clamp((view - DETAIL[1]) / (DETAIL[2] - DETAIL[1]), 0, 1)
 end
 
 local cx, cy, cz, tx, ty, tz, rw, rnr, rax, rlo = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
@@ -91,7 +104,7 @@ end
 
 local widths, swells = {}, {}
 
-local function Widths(m, n, R, bulges, link)
+local function Widths(m, n, R, bulges, link, sub)
 	local body, tail = EvilSnake.Shape()
 	for j = 1, m do
 		widths[j] = R * EvilSnake.Profile((j - 1) / (m - 1), body, tail)
@@ -101,7 +114,7 @@ local function Widths(m, n, R, bulges, link)
 	if head < R then
 		local reach = NECK * R
 		for j = 1, m do
-			local d = (j - 1) / SUB * link
+			local d = (j - 1) / sub * link
 			if d >= reach then break end
 			local u = d / reach
 			widths[j] = widths[j] * Lerp(u * u * (3 - 2 * u), head / R, 1)
@@ -112,10 +125,10 @@ local function Widths(m, n, R, bulges, link)
 		swell = swell * swell * (3 - 2 * swell)
 		local size = 1 + (b.size - 1) * swell
 		local reach = R * EvilSnake.Profile(b.at / n, body, tail) * size * SPAN
-		local lo = max(1, math.floor((b.at - reach / link) * SUB) + 1)
-		local hi = min(m, math.ceil((b.at + reach / link) * SUB) + 1)
+		local lo = max(1, math.floor((b.at - reach / link) * sub) + 1)
+		local hi = min(m, math.ceil((b.at + reach / link) * sub) + 1)
 		for j = lo, hi do
-			local d = abs((j - 1) / SUB - b.at) * link
+			local d = abs((j - 1) / sub - b.at) * link
 			if d < reach then
 				swells[j] = max(swells[j], 1 + (size - 1) * (0.5 + 0.5 * cos(math.pi * d / reach)))
 			end
@@ -124,49 +137,71 @@ local function Widths(m, n, R, bulges, link)
 	for j = 1, m do widths[j] = widths[j] * swells[j] end
 end
 
-local function Rings(pts, bulges, R, link, mouth)
+local qx, qy, qz, sx, sy, sz = {}, {}, {}, {}, {}, {}
+
+local function Coef(p0, p1, p2, p3)
+	return p1, (p2 - p0) * 0.5, p0 - p1 * 2.5 + p2 * 2 - p3 * 0.5, (p1 * 3 - p0 - p2 * 3 + p3) * 0.5
+end
+
+local function Spline(pts, sub)
+	local n, m = #pts, 0
+	for i = 1, n do qx[i], qy[i], qz[i] = pts[i]:Unpack() end
+	for i = 1, n - 1 do
+		local a, d = max(i - 1, 1), min(i + 2, n)
+		local x0, x1, x2, x3 = Coef(qx[a], qx[i], qx[i + 1], qx[d])
+		local y0, y1, y2, y3 = Coef(qy[a], qy[i], qy[i + 1], qy[d])
+		local z0, z1, z2, z3 = Coef(qz[a], qz[i], qz[i + 1], qz[d])
+		for s = 0, sub - 1 do
+			local t = s / sub
+			local t2 = t * t
+			local t3 = t2 * t
+			m = m + 1
+			sx[m] = x0 + x1 * t + x2 * t2 + x3 * t3
+			sy[m] = y0 + y1 * t + y2 * t2 + y3 * t3
+			sz[m] = z0 + z1 * t + z2 * t2 + z3 * t3
+		end
+	end
+	m = m + 1
+	sx[m], sy[m], sz[m] = qx[n], qy[n], qz[n]
+	return m
+end
+
+local function Rings(pts, bulges, R, link, mouth, sub)
 	count = 0
 	local n = #pts
-	local samples = {}
-	for i = 1, n - 1 do
-		local p0, p1, p2, p3 = pts[max(i - 1, 1)], pts[i], pts[i + 1], pts[min(i + 2, n)]
-		for s = 0, SUB - 1 do samples[#samples + 1] = CatmullRom(p0, p1, p2, p3, s / SUB) end
-	end
-	samples[#samples + 1] = pts[n]
-	local m = #samples
+	local m = Spline(pts, sub)
 	local drop = EvilSnake.HeadDrop(R)
 	if drop > 0 then
 		local reach = NECK * R
 		for j = 1, m do
-			local d = (j - 1) / SUB * link
+			local d = (j - 1) / sub * link
 			if d >= reach then break end
 			local u = d / reach
-			samples[j] = samples[j] - Vector(0, 0, drop * (1 - u * u * (3 - 2 * u)))
+			sz[j] = sz[j] - drop * (1 - u * u * (3 - 2 * u))
 		end
 	end
-	local first = (samples[2] - samples[1]):GetNormalized()
-	Widths(m, n - 1, R, bulges, link)
-	Gullet(samples[1], first, widths[1], mouth)
+	local first = Vector(sx[2] - sx[1], sy[2] - sy[1], sz[2] - sz[1])
+	first:Normalize()
+	Widths(m, n - 1, R, bulges, link, sub)
+	Gullet(Vector(sx[1], sy[1], sz[1]), first, widths[1], mouth)
+	local half = sub / 2
 	for j = 1, m do
 		local a, b = max(j - 1, 1), min(j + 1, m)
-		local d = samples[b] - samples[a]
-		local len = d:Length()
-		d:Normalize()
+		local dx, dy, dz = sx[b] - sx[a], sy[b] - sy[a], sz[b] - sz[a]
+		local len = sqrt(dx * dx + dy * dy + dz * dz)
+		local il = len > 1e-6 and 1 / len or 0
 		local slope = len > 1e-4 and (widths[b] - widths[a]) / len or 0
 		local inv = 1 / sqrt(1 + slope * slope)
-		local p = samples[j]
-		local link = math.floor((j - 1) / SUB)
-		local joint = min(n, link + 1 + ((j - 1) % SUB >= SUB / 2 and 1 or 0))
-		Ring(p.x, p.y, p.z, d.x, d.y, d.z, widths[j], inv, -slope * inv, joint)
+		local seg = math.floor((j - 1) / sub)
+		local joint = min(n, seg + 1 + ((j - 1) % sub >= half and 1 or 0))
+		Ring(sx[j], sy[j], sz[j], dx * il, dy * il, dz * il, widths[j], inv, -slope * inv, joint)
 	end
 end
 
-local vx, vy, vz, vr, vg, vb = {}, {}, {}, {}, {}, {}
-local scratch = Vector()
+local verts, vr, vg, vb = {}, {}, {}, {}
 
 local function Vert(i)
-	scratch:SetUnpacked(vx[i], vy[i], vz[i])
-	mesh.Position(scratch)
+	mesh.Position(verts[i])
 	mesh.TexCoord(0, 0, 0)
 	mesh.Color(vr[i], vg[i], vb[i], 255)
 	mesh.AdvanceVertex()
@@ -176,8 +211,12 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 	if #pts < 2 then return end
 	Relight(body, pts)
 	cr, cg, cb = EvilSnake.Color()
-	Rings(pts, bulges or {}, R, link, mouth)
-	local tr = EvilSnake.Trig(SIDES)
+	local detail = Detail(pts, R)
+	local near = math.Clamp(math.ceil(link / (R * SPACING)), 2, SUB)
+	local sub = math.Round(Lerp(detail, near, 1))
+	local sides = math.Round(Lerp(detail, SIDES[1], SIDES[2]))
+	Rings(pts, bulges or {}, R, link, mouth, sub)
+	local tr = EvilSnake.Trig(sides)
 	local light = body.light
 	local nx, ny, nz = 0, 0, 1
 	for j = 1, count do
@@ -194,11 +233,16 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 		local w, r, k = rw[j], rnr[j], rax[j]
 		local px, py, pz, o = cx[j], cy[j], cz[j], rlo[j]
 		local r0, g0, b0 = rr[j], rg[j], rb[j]
-		for q = 0, SIDES - 1 do
+		for q = 0, sides - 1 do
 			local cs, sn = tr.c[q], tr.s[q]
 			local dx, dy, dz = nx * cs + bx * sn, ny * cs + by * sn, nz * cs + bz * sn
-			local i = (j - 1) * SIDES + q + 1
-			vx[i], vy[i], vz[i] = px + dx * w, py + dy * w, pz + dz * w
+			local i = (j - 1) * sides + q + 1
+			local v = verts[i]
+			if not v then
+				v = Vector()
+				verts[i] = v
+			end
+			v:SetUnpacked(px + dx * w, py + dy * w, pz + dz * w)
 			local l = Bright(light, o, dx * r + ax * k, dy * r + ay * k, dz * r + az * k)
 			vr[i], vg[i], vb[i] = min(255, r0 * l), min(255, g0 * l), min(255, b0 * l)
 		end
@@ -207,11 +251,11 @@ function Body.Draw(body, pts, bulges, R, link, mouth)
 	render.SetMaterial(EvilSnake.Material)
 	for a = 1, count - 1, BATCH do
 		local b = min(a + BATCH - 1, count - 1)
-		mesh.Begin(MATERIAL_QUADS, (b - a + 1) * SIDES)
+		mesh.Begin(MATERIAL_QUADS, (b - a + 1) * sides)
 		for j = a, b do
-			local r0, r1 = (j - 1) * SIDES, j * SIDES
-			for q = 0, SIDES - 1 do
-				local q2 = (q + 1) % SIDES
+			local r0, r1 = (j - 1) * sides, j * sides
+			for q = 0, sides - 1 do
+				local q2 = (q + 1) % sides
 				Vert(r0 + q + 1)
 				Vert(r0 + q2 + 1)
 				Vert(r1 + q2 + 1)
