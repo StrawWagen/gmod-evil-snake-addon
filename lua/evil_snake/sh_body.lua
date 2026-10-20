@@ -1,6 +1,7 @@
 EvilSnake = EvilSnake or {}
 
 EvilSnake.SEND = 1 / 15
+EvilSnake.SPINUP = 1.5
 
 local STEP = 24
 local DROP = 120

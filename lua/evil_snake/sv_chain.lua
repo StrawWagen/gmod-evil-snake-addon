@@ -34,6 +34,9 @@ local BUOY = 1.3
 local WET_DAMP = 0.9
 local DIVE = 0.8
 local SURGE = 0.5
+local RISE = 1
+local FLOAT = 0.6
+local HOVER = 0.9
 local STICK = 1
 local CLING_GRIP = 1
 local HUG = 0.5
@@ -553,13 +556,15 @@ local function Tick(c)
 	local wet = c.wet
 	local stick = STICK * gravity * DT * DT
 	if c.letgo > 0 then c.letgo = math.max(0, c.letgo - DT) end
+	local fly = c.fly and c.letgo <= 0
 	for i = 1, n do
 		local soak = Soak(c, i, x[i])
 		wet[i] = soak
 		local pull = fall * (1 - BUOY * soak)
 		local hold = Hold(c, cn[i])
 		if hold > 0 then pull = pull * (1 - hold) - cn[i] * (stick * hold) end
-		p[i] = x[i] + (x[i] - old[i]) * (soak > 0 and WET_DAMP or DAMP) + pull
+		if fly then pull = pull * (i == 1 and 0 or 1 - FLOAT) end
+		p[i] = x[i] + (x[i] - old[i]) * (fly and i == 1 and HOVER or soak > 0 and WET_DAMP or DAMP) + pull
 	end
 	local want = c.want or 0
 	if c.driving and c.goal then
@@ -567,11 +572,21 @@ local function Tick(c)
 	end
 	c.speed = c.speed + (want - c.speed) * math.min(1, PACE * DT)
 	if want <= 0 and c.speed < CRAWL then c.speed = 0 end
-	local swim = wet[1] > 0 and (not cn[1] or wet[1] >= 1 and not (c.aim and c.aim.z < x[1].z))
+	local swim = not fly and wet[1] > 0 and (not cn[1] or wet[1] >= 1 and not (c.aim and c.aim.z < x[1].z))
 	if c.speed > 0 then
 		local step = Steer(c)
 		local hold = Hold(c, cn[1])
-		if hold > 0 and not swim then
+		if fly then
+			local cap = c.speed * DT * RISE
+			local to = x[1] + step
+			if c.aim then
+				local dx, dy = c.aim.x - x[1].x, c.aim.y - x[1].y
+				local flat, len = math.sqrt(dx * dx + dy * dy), c.speed * DT
+				if flat < len then to = x[1] + step * (flat / len) end
+				to.z = x[1].z + math.Clamp(c.aim.z - x[1].z, -cap, cap)
+			end
+			p[1] = to
+		elseif hold > 0 and not swim then
 			p[1] = x[1] + Surface(c, cn[1], step) - cn[1] * HUG + fall * (1 - hold)
 		elseif cn[1] and not swim then
 			p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * DAMP) + fall
@@ -588,7 +603,7 @@ local function Tick(c)
 	else
 		c.driving = false
 	end
-	local pin = c.driving and (cn[1] ~= nil or swim)
+	local pin = fly or c.driving and (cn[1] ~= nil or swim)
 	local found = Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
 	if found and #found == 0 then found = nil end
 	for _ = 1, Setting("solver_passes") do

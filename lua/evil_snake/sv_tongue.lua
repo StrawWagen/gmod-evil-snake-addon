@@ -126,7 +126,7 @@ function Tongue:Try(snake, now)
 		if dist <= reach and to:Dot(fwd) >= dist * CONE
 			and not util.TraceLine({
 				start = mouth, endpos = aim, mask = MASK_SOLID,
-				filter = function(e) return e ~= snake and e ~= prey and not e.EvilHitboxOwner end,
+				filter = function(e) return e ~= snake and e ~= prey and not e.EvilHitboxOwner and not e.EvilSnakeRide end,
 			}).Hit then
 			return self:Start(snake, prey, reach, to / math.max(dist, 1))
 		end

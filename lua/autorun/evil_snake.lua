@@ -13,6 +13,7 @@ AddCSLuaFile("evil_snake/cl_stomach.lua")
 AddCSLuaFile("evil_snake/cl_tongue.lua")
 AddCSLuaFile("evil_snake/cl_inside.lua")
 AddCSLuaFile("evil_snake/cl_thrash.lua")
+AddCSLuaFile("evil_snake/cl_propellor.lua")
 include("evil_snake/sh_settings.lua")
 include("evil_snake/sh_body.lua")
 include("evil_snake/sh_stomach.lua")
@@ -23,6 +24,7 @@ if SERVER then
 	include("evil_snake/sv_stomach.lua")
 	include("evil_snake/sv_tongue.lua")
 	include("evil_snake/sv_fungus.lua")
+	include("evil_snake/sv_propellor.lua")
 	include("evil_snake/sv_debug.lua")
 	include("evil_snake/sv_stomach_view.lua")
 else
@@ -35,4 +37,5 @@ else
 	include("evil_snake/cl_stomach.lua")
 	include("evil_snake/cl_inside.lua")
 	include("evil_snake/cl_thrash.lua")
+	include("evil_snake/cl_propellor.lua")
 end

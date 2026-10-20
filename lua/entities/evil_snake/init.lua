@@ -87,6 +87,9 @@ local FLYING = 4
 local HIDDEN = 1.5
 local FRAIL = 1
 local SCARED = 0.3
+local CRUISE = 200
+local CRUISE_AHEAD = 600
+local CRUISE_LOOK = 2000
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -110,7 +113,7 @@ function ENT:Initialize()
 	self:SetLength(self.BaseSegments)
 	local filter = function(e)
 		return e ~= self and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot() and e:GetClass() ~= "evil_snake"
-			and not e.EvilDowned and not e.EvilHitboxOwner
+			and not e.EvilDowned and not e.EvilHitboxOwner and not e.EvilSnakeRide
 	end
 	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter)
 	self.Chain = EvilSnake.Chain.New(joints, filter)
@@ -256,8 +259,9 @@ end
 
 function ENT:Appeal(ent, from, d)
 	local score = d / (1 + self.Sharp.picky * EvilSnake.Worth(ent))
-	if not self:Level(ent:WorldSpaceCenter(), from) then score = score * OFF_LEVEL end
-	if Airborne(ent) then score = score * FLYING end
+	local fly = self.Chain.fly
+	if not fly and not self:Level(ent:WorldSpaceCenter(), from) then score = score * OFF_LEVEL end
+	if Airborne(ent) then score = fly and score / FLYING or score * FLYING end
 	if not EvilSnake.Clear(self, from, ent) then score = score * HIDDEN end
 	local max = ent:GetMaxHealth()
 	if max > 0 then score = score / (1 + FRAIL * (1 - math.Clamp(ent:Health() / max, 0, 1))) end
@@ -494,6 +498,7 @@ function ENT:Hold(now)
 end
 
 function ENT:OnRemove()
+	EvilSnake.Unrotor(self)
 	self.Tongue:Drop(self)
 	self:Release()
 	self.Stomach:Vacate()
@@ -725,6 +730,7 @@ function ENT:Die(dmg)
 	self:Release()
 	self.Stomach:Vacate()
 	self.Hitbox:Clear()
+	EvilSnake.Unrotor(self)
 	Evil.Absent(self)
 	self.Prey = nil
 	self:SetPrey(NULL)
@@ -756,7 +762,7 @@ local Reaches = EvilSnake.Reaches
 
 function EvilSnake.Clear(snake, from, ent, near)
 	local filter = function(e)
-		return e ~= snake and e ~= ent and not e.EvilHitboxOwner and not e:IsPlayer() and not e:IsNPC() and e:GetClass() ~= "evil_snake"
+		return e ~= snake and e ~= ent and not e.EvilHitboxOwner and not e.EvilSnakeRide and not e:IsPlayer() and not e:IsNPC() and e:GetClass() ~= "evil_snake"
 	end
 	local center = ent:WorldSpaceCenter()
 	if not util.TraceLine({ start = from, endpos = center, mask = MASK_SOLID, filter = filter }).Hit then return true end
@@ -835,6 +841,14 @@ function ENT:Goal(prey, head, now)
 	return pts[route.i] + Vector(0, 0, self:Radius())
 end
 
+function ENT:Cruise(head, yaw)
+	local aim = head + Angle(0, yaw, 0):Forward() * CRUISE_AHEAD
+	local ground = util.TraceLine({ start = head, endpos = head - Vector(0, 0, CRUISE_LOOK), mask = MASK_SOLID_BRUSHONLY }).HitPos
+	local roof = util.TraceLine({ start = head, endpos = head + Vector(0, 0, CRUISE), mask = MASK_SOLID_BRUSHONLY }).HitPos
+	aim.z = math.min(ground.z + CRUISE, roof.z - self:Radius() * 2)
+	return aim
+end
+
 function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
@@ -872,7 +886,11 @@ function ENT:Decide(now)
 	self.Prey = prey
 	if self:GetPrey() ~= (prey or NULL) then self:SetPrey(prey or NULL) end
 
-	if prey and now >= (self.DetourUntil or 0) then
+	if prey and now >= (self.DetourUntil or 0) and c.fly then
+		local aim = Clear(self, head, prey) and self:Lead(prey, head) or self:Goal(prey, head, now)
+		local to = aim - head
+		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("fly_speed") * self.Sharp.speed, aim)
+	elseif prey and now >= (self.DetourUntil or 0) then
 		local aim = self:Goal(prey, head, now)
 		local to = aim - head
 		local r = self:Radius()
@@ -891,7 +909,7 @@ function ENT:Decide(now)
 			c.climb = math.random() < 0.5 and 1 or -1
 			if not prey then self:Drop(nil, head) end
 		end
-		EvilSnake.Chain.Drive(c, self.WanderYaw, Setting("wander_speed") * self.Sharp.speed)
+		EvilSnake.Chain.Drive(c, self.WanderYaw, Setting("wander_speed") * self.Sharp.speed, c.fly and self:Cruise(head, self.WanderYaw) or nil)
 	else
 		EvilSnake.Chain.Drive(c, yaw, 0)
 	end
@@ -932,6 +950,7 @@ function ENT:Think()
 		self.Hitbox:Think(now)
 		self:Regen(now, dt)
 		EvilSnake.Smear(self, now)
+		EvilSnake.Propellor(self, now)
 	end
 	if self.Tongue:Think(self, now, dt) then self.Dirty = true end
 	if alive then
