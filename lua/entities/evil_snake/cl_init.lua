@@ -1,4 +1,5 @@
 include("shared.lua")
+if not EvilSnake then return end
 
 language.Add("evil_snake", "Evil snake")
 killicon.Add("evil_snake", "killicons/evil_snake.png", Color(170, 210, 80))

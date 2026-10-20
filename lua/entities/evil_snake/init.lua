@@ -1,6 +1,7 @@
 AddCSLuaFile("cl_init.lua")
 AddCSLuaFile("shared.lua")
 include("shared.lua")
+if not EvilSnake then return end
 
 util.AddNetworkString("EvilSnakeBody")
 
