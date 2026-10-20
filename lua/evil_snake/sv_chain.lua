@@ -537,6 +537,7 @@ local function Separate(c, p, found)
 				else
 					nx, ny, nz = 0, 0, 1
 				end
+				if i == 1 and nz > 0 then c.propped = true end
 				local half = (reach - dist) * 0.5 * SELF_STIFF
 				local ks = half / ((1 - s) ^ 2 + s * s)
 				local kt = half / ((1 - t) ^ 2 + t * t)
@@ -580,6 +581,7 @@ local function Tick(c)
 	c.speed = c.speed + (want - c.speed) * math.min(1, PACE * DT)
 	if want <= 0 and c.speed < CRAWL then c.speed = 0 end
 	local swim = not fly and wet[1] > 0 and (not cn[1] or wet[1] >= 1 and not (c.aim and c.aim.z < x[1].z))
+	local propped = c.propped
 	if c.speed > 0 then
 		local step = Steer(c)
 		local hold = Hold(c, cn[1])
@@ -595,7 +597,7 @@ local function Tick(c)
 			p[1] = to
 		elseif hold > 0 and not swim then
 			p[1] = x[1] + Surface(c, cn[1], step) - cn[1] * HUG + fall * (1 - hold)
-		elseif cn[1] and not swim then
+		elseif (cn[1] or propped) and not swim then
 			p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * DAMP) + fall
 		elseif swim then
 			local cap = c.speed * DT * DIVE
@@ -610,9 +612,10 @@ local function Tick(c)
 	else
 		c.driving = false
 	end
-	local pin = fly or c.driving and (cn[1] ~= nil or swim)
+	local pin = fly or c.driving and (cn[1] ~= nil or propped or swim)
 	local found = Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
 	if found and #found == 0 then found = nil end
+	c.propped = false
 	for _ = 1, Setting("solver_passes") do
 		for i = 1, n - 1 do
 			local d = p[i + 1] - p[i]
