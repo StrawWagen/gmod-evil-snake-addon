@@ -41,6 +41,7 @@ net.Receive("EvilSnakeBody", function()
 end)
 
 function ENT:Initialize()
+	self:DrawShadow(false)
 	self.Body = EvilSnake.Body.New()
 	self.Tongue = EvilSnake.Tongue.New()
 	self.Bulges = {}

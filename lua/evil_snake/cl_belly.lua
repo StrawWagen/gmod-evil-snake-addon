@@ -6,8 +6,8 @@ local Setting, Along = EvilSnake.Setting, EvilSnake.Along
 local sqrt, sin, cos, max, min, abs, floor, pi = math.sqrt, math.sin, math.cos, math.max, math.min, math.abs, math.floor, math.pi
 
 local SUB = 4
-local SIDES = 24
-local RANGE = 700
+local SIDES = 20
+local RANGE = 500
 local INNER = 0.8
 local THROAT = 1
 local POCKET = 0.85
@@ -36,6 +36,7 @@ local FOG = 260
 local FADE_IN = 0.8
 local CLOSE = 0.8
 local ZNEAR = 1
+local CULL = 2
 local BATCH = 100
 local GURGLE = { "npc/barnacle/barnacle_digesting1.wav", "npc/barnacle/barnacle_digesting2.wav" }
 local GURGLE_GAP = { 3, 7 }
@@ -56,8 +57,7 @@ local function Active(ply)
 end
 
 local function Reset()
-	if not state.enter then return end
-	state = {}
+	if state.enter then state = {} end
 end
 
 local function Eye(ply)
@@ -68,7 +68,7 @@ end
 
 function Belly.View(ply, angles, fov)
 	local _, _, _, eye = Eye(ply)
-	return { origin = eye or ply:EyePos(), angles = angles, fov = fov, drawviewer = false, znear = ZNEAR }
+	return { origin = eye or ply:EyePos(), angles = angles, fov = fov, drawviewer = false, znear = ZNEAR, zfar = CULL }
 end
 
 local function Pocket(u, at, size, R, link, scale)
@@ -199,12 +199,26 @@ local function Draw()
 	end
 end
 
-hook.Add("RenderScene", "EvilSnakeBelly", function(_, angles, fov)
+hook.Add("RenderScene", "EvilSnakeBelly", function()
 	local ply = LocalPlayer()
-	if not Active(ply) then return Reset() end
+	if not Active(ply) then
+		Reset()
+		return
+	end
 	local now = RealTime()
-	state.enter = state.enter or now
+	if not state.enter then
+		state.enter = now
+		state.tone = render.GetToneMappingScaleLinear()
+	end
+	render.SetToneMappingScaleLinear(state.tone)
 	if ply:GetNW2Bool("EvilSnakeDone") then state.done = state.done or now else state.done = nil end
+end)
+
+hook.Add("PostDrawTranslucentRenderables", "EvilSnakeBelly", function(depth, skybox, sky3d)
+	if depth or skybox or sky3d or not state.enter then return end
+	local ply = LocalPlayer()
+	if not Active(ply) then return end
+	local now = RealTime()
 	local fade = Smooth(min((now - state.enter) / FADE_IN, 1))
 	local close = 1
 	if state.done then
@@ -214,16 +228,14 @@ hook.Add("RenderScene", "EvilSnakeBelly", function(_, angles, fov)
 	render.Clear(0, 0, 0, 255, true, true)
 	local snake, at, size, eye = Eye(ply)
 	state.eye = eye
-	if eye and fade > 0 then
-		local R, link, n = Rings(snake, at, size, now, close)
-		state.at, state.link = at, link
-		Shade(snake, eye, R, link, n, fade)
-		cam.Start3D(eye, angles, fov, 0, 0, ScrW(), ScrH(), ZNEAR, RANGE * 2)
-		Draw()
-		cam.End3D()
-	end
-	render.RenderHUD(0, 0, ScrW(), ScrH())
-	return true
+	if not eye or fade <= 0 then return end
+	local R, link, n = Rings(snake, at, size, now, close)
+	state.at, state.link = at, link
+	Shade(snake, eye, R, link, n, fade)
+	local view = render.GetViewSetup()
+	cam.Start3D(eye, view.angles, view.fov, view.x, view.y, view.width, view.height, ZNEAR, RANGE * 2)
+	Draw()
+	cam.End3D()
 end)
 
 hook.Add("Think", "EvilSnakeBelly", function()
