@@ -65,12 +65,40 @@ function Stomach:Settle(v)
 	if self.onDigest then self.onDigest(v) end
 end
 
+local function Out(m)
+	local ply = m.ply
+	m.ply = nil
+	if IsValid(ply) and ply.EvilSnakeMeal == m then
+		ply.EvilSnakeMeal = nil
+		ply:SetNW2Bool("EvilSnakeInside", false)
+	end
+end
+
+function Stomach:Pass(m)
+	Out(m)
+	self:Settle(m.victim)
+end
+
+function Stomach:Vacate()
+	for _, m in ipairs(self.transit) do Out(m) end
+end
+
 function Stomach:Swallow(ent, at)
 	local v = self:Record(ent)
-	if #self.transit >= MAX_TRANSIT then self:Settle(table.remove(self.transit, 1).victim) end
-	self.transit[#self.transit + 1] = { victim = v, at = at or 0, size = EvilSnake.BulgeSize(v.size) }
+	if #self.transit >= MAX_TRANSIT then self:Pass(table.remove(self.transit, 1)) end
+	local m = { victim = v, at = at or 0, size = EvilSnake.BulgeSize(v.size), ply = ent:IsPlayer() and ent or nil }
+	self.transit[#self.transit + 1] = m
+	if m.ply then
+		if ent.EvilSnakeMeal then Out(ent.EvilSnakeMeal) end
+		ent.EvilSnakeMeal = m
+		ent:SetNW2Bool("EvilSnakeInside", true)
+	end
 	return v
 end
+
+hook.Add("PlayerSpawn", "EvilSnakeInside", function(ply)
+	if ply.EvilSnakeMeal then Out(ply.EvilSnakeMeal) end
+end)
 
 function Stomach:Digest(dt, links, link)
 	local transit = self.transit
@@ -79,7 +107,7 @@ function Stomach:Digest(dt, links, link)
 	for i = #transit, 1, -1 do
 		local m = transit[i]
 		m.at = m.at + rate
-		if m.at >= links then self:Settle(table.remove(transit, i).victim) end
+		if m.at >= links then self:Pass(table.remove(transit, i)) end
 	end
 	return true
 end

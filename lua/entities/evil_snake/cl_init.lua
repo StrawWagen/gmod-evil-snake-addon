@@ -27,7 +27,7 @@ net.Receive("EvilSnakeBody", function()
 	local t = net.ReadDouble()
 	local pts, meals = {}, {}
 	for i = 1, net.ReadUInt(8) do pts[i] = net.ReadVector() end
-	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat() } end
+	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat(), ply = net.ReadEntity() } end
 	local held
 	if net.ReadBool() then
 		held = { ent = net.ReadEntity(), at = net.ReadDouble(), hold = net.ReadFloat(), pace = net.ReadFloat(), size = net.ReadFloat() }
@@ -102,6 +102,12 @@ local function Sample(snaps, rt)
 	return pose, a, b, u
 end
 
+local function Blob(pose, at)
+	local n = #pose
+	local i = math.min(math.floor(at) + 1, n - 1)
+	return EvilSnake.CatmullRom(pose[math.max(i - 1, 1)], pose[i], pose[i + 1], pose[min(i + 2, n)], at - (i - 1))
+end
+
 function ENT:Slither(now)
 	if now < (self.NextSlither or 0) then return end
 	self.NextSlither = now + SLITHER_GAP
@@ -157,10 +163,12 @@ function ENT:Think()
 	self.Pose = pose
 	self.Link = EvilSnake.Setting("segment_length") * math.max(self:GetLength(), 1) / math.max(#pose - 1, 1)
 	local ahead = math.max(rt - snap.fed, 0) * EvilSnake.Setting("bulge_speed") / self.Link
-	local bulges, fattest = {}, 1
+	local bulges, fattest, mine = {}, 1, nil
+	local me = LocalPlayer()
 	for i, m in ipairs(snap.meals) do
 		bulges[i] = { at = math.min(m.at + ahead, #pose - 1), size = m.size }
 		fattest = math.max(fattest, m.size)
+		if m.ply == me then mine = bulges[i] end
 	end
 	local tongue = self.Tongue
 	EvilSnake.Tongue.Update(tongue, snap.tongue, later.tongue, u, now - (self.LastTongue or now))
@@ -185,6 +193,7 @@ function ENT:Think()
 		self.Gape = EvilSnake.Tongue.Gape(tongue, head, neck, EvilSnake.HeadRadius(r))
 	end
 	self.Bulges = bulges
+	if mine then EvilSnake.Inside(Blob(pose, mine.at), r * mine.size) end
 	local target = held and held.ent or self:GetPrey()
 	self.Body.look = not held and EvilSnake.Tongue.Look(tongue)
 		or IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter()) or nil

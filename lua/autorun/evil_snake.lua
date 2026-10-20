@@ -10,6 +10,7 @@ AddCSLuaFile("evil_snake/cl_head.lua")
 AddCSLuaFile("evil_snake/cl_body.lua")
 AddCSLuaFile("evil_snake/cl_stomach.lua")
 AddCSLuaFile("evil_snake/cl_tongue.lua")
+AddCSLuaFile("evil_snake/cl_inside.lua")
 include("evil_snake/sh_settings.lua")
 include("evil_snake/sh_body.lua")
 include("evil_snake/sh_stomach.lua")
@@ -27,4 +28,5 @@ else
 	include("evil_snake/cl_body.lua")
 	include("evil_snake/cl_tongue.lua")
 	include("evil_snake/cl_stomach.lua")
+	include("evil_snake/cl_inside.lua")
 end

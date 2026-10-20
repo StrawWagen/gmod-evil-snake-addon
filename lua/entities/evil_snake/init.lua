@@ -103,6 +103,7 @@ function ENT:SendBody(ply)
 	for _, m in ipairs(transit) do
 		net.WriteFloat(m.at)
 		net.WriteFloat(m.size)
+		net.WriteEntity(m.ply or NULL)
 	end
 	local held = self.Held
 	net.WriteBool(held ~= nil)
@@ -312,6 +313,7 @@ end
 function ENT:OnRemove()
 	self.Tongue:Drop(self)
 	self:Release()
+	self.Stomach:Vacate()
 end
 
 function EvilSnake.Reaches(ent, from, to, steps, reach)
