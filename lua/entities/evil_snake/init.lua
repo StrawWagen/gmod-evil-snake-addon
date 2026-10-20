@@ -1059,7 +1059,9 @@ net.Receive("EvilSnakeBody", function(_, ply)
 	local ent = net.ReadEntity()
 	if not IsValid(ent) or ent:GetClass() ~= "evil_snake" or not ent.Chain then return end
 	local now = RealTime()
-	if now < (ply.EvilSnakeAsk or 0) then return end
-	ply.EvilSnakeAsk = now + ASK_GAP
+	local asked = ply.EvilSnakeAsk or setmetatable({}, { __mode = "k" })
+	ply.EvilSnakeAsk = asked
+	if now < (asked[ent] or 0) then return end
+	asked[ent] = now + ASK_GAP
 	ent:SendBody(ply)
 end)
