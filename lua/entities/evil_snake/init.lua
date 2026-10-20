@@ -91,6 +91,10 @@ local CRUISE = 200
 local CRUISE_AHEAD = 600
 local CRUISE_LOOK = 2000
 local FOLLOW_LOOK = 32768
+local FOLLOW_STEEP = 0.7
+local FOLLOW_INTO = 4
+local FOLLOW_WALLS = 16
+local FOLLOW_WALL_LOOK = 3000
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -857,6 +861,36 @@ function ENT:Cruise(head, yaw)
 	return aim
 end
 
+function ENT:WallNear(head, spot)
+	local r = self:Radius()
+	local from = head + Vector(0, 0, r)
+	local best, bestScore
+	for k = 0, FOLLOW_WALLS - 1 do
+		local dir = Angle(0, k * 360 / FOLLOW_WALLS, 0):Forward()
+		local tr = util.TraceLine({ start = from, endpos = from + dir * FOLLOW_WALL_LOOK, mask = MASK_SOLID_BRUSHONLY })
+		if tr.Hit and math.abs(tr.HitNormal.z) < FOLLOW_STEEP then
+			local score = from:Distance(tr.HitPos) + math.sqrt((tr.HitPos.x - spot.x) ^ 2 + (tr.HitPos.y - spot.y) ^ 2)
+			if not bestScore or score < bestScore then best, bestScore = tr, score end
+		end
+	end
+	if best then return best.HitPos - best.HitNormal * r * FOLLOW_INTO end
+end
+
+function ENT:Crawl(c, head, tr, spot, to)
+	local on = EvilSnake.Chain.Surface(c)
+	local n = tr.HitNormal
+	if on == "wall" and c.climb ~= 0 then
+		local out = Vector(c.cn[1].x, c.cn[1].y, 0)
+		out:Normalize()
+		local along = Vector(to.x, to.y, 0)
+		along = along - out * along:Dot(out)
+		return head + along - out * math.abs(to.z)
+	end
+	if math.abs(n.z) < FOLLOW_STEEP then return tr.HitPos - n * self:Radius() * FOLLOW_INTO end
+	if n.z <= -FOLLOW_STEEP and on ~= "ceiling" then return self:WallNear(head, spot) or spot end
+	return spot
+end
+
 function ENT:Follow(c, head)
 	local ply = EvilSnake.Leader
 	if not IsValid(ply) then return end
@@ -866,13 +900,15 @@ function ENT:Follow(c, head)
 	local eye = ply:EyePos()
 	local tr = util.TraceLine({ start = eye, endpos = eye + ply:GetAimVector() * FOLLOW_LOOK, mask = MASK_SOLID_BRUSHONLY })
 	local r = self:Radius()
-	local aim = tr.HitPos + tr.HitNormal * r
-	local to = aim - head
+	local spot = tr.HitPos + tr.HitNormal * r
+	local to = spot - head
 	if to:LengthSqr() < (r * 2 + WAYPOINT) ^ 2 then
 		EvilSnake.Chain.Drive(c, EvilSnake.Chain.HeadYaw(c), 0)
 		return true
 	end
-	if to.z > r then c.climb = 1 elseif to.z < -r then c.climb = -1 end
+	c.climb = to.z > r and 1 or to.z < -r and -1 or 0
+	local aim = c.fly and spot or self:Crawl(c, head, tr, spot, to)
+	to = aim - head
 	local speed = Setting(c.fly and "fly_speed" or "hunt_speed") * self.Sharp.speed
 	EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), speed, aim)
 	return true
