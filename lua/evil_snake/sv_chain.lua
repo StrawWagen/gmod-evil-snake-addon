@@ -260,13 +260,27 @@ local function Contact(c, i, pos, hit, ahead)
 	c.cn[i], c.cd[i] = nil, nil
 end
 
-local function Over(c, i, pos, wall)
+local function Over(c, i, pos, wall, move)
 	local reach = c.hull[i] * 2 + PROBE
 	local across = Hull(c, i, pos, pos - wall * reach)
 	if across.StartSolid then return end
 	local down = Hull(c, i, across.HitPos, across.HitPos - UP * reach)
-	if down.StartSolid or not down.Hit or down.HitNormal.z < FLOOR then return end
-	return down.HitPos
+	if not down.StartSolid and down.Hit and down.HitNormal.z >= FLOOR then return down.HitPos end
+	local side = move - wall * move:Dot(wall)
+	side.z = 0
+	if side:LengthSqr() < 1e-4 then return end
+	side:Normalize()
+	local back = Hull(c, i, across.HitPos, across.HitPos - side * reach)
+	if back.StartSolid or not back.Hit then return end
+	return back.HitPos, -back.HitNormal
+end
+
+local function Turn(c, from, to)
+	local a = math.NormalizeAngle(math.deg(math.atan2(to.y, to.x) - math.atan2(from.y, from.x)))
+	if c.yaw then c.yaw = c.yaw + a end
+	if c.goal then c.goal = c.goal + a end
+	c.aim = nil
+	c.turned = (c.turned or 0) + a
 end
 
 local function Surface(c, normal, step)
@@ -354,9 +368,11 @@ local function Collide(c, i, from, to, along, gravity)
 	end
 	Contact(c, i, final, hit, ahead)
 	if not c.cn[i] and Steep(c, normal) and normal.z > -FLOOR then
-		local top = Over(c, i, final, normal)
+		local top, grab = Over(c, i, final, normal, final - from)
 		if top then
-			Contact(c, i, top)
+			if not (grab and Touch(c, i, top, grab)) then Contact(c, i, top) end
+			local now = c.cn[i]
+			if i == 1 and grab and now and now.z < FLOOR and now.z > -FLOOR then Turn(c, normal, now) end
 			return top, false, true
 		end
 	end

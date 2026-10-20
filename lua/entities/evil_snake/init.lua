@@ -928,6 +928,10 @@ function ENT:Decide(now)
 		self.WanderYaw = EvilSnake.Chain.Away(self.WanderYaw, c.landed)
 		c.landed = nil
 	end
+	if c.turned then
+		self.WanderYaw = self.WanderYaw + c.turned
+		c.turned = nil
+	end
 	if self.Held or IsValid(self.Tongue.ent) then
 		self.Prey, self.LastHead, self.Route = nil, nil, nil
 		if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
