@@ -57,6 +57,14 @@ local PICKY = 3
 local CLING = 2.5
 local DROP_TIME = 1.5
 local DROP_CHANCE = 0.25
+local TOUGH = 0.5
+local HEAD_HIT = 1.5
+local SHOCK_FADE = 2
+local PAIN_GAP = 0.6
+local PAIN = { "npc/ichthyosaur/attack_growl1.wav", "npc/ichthyosaur/attack_growl2.wav", "npc/ichthyosaur/attack_growl3.wav" }
+local DIE = { "npc/barnacle/barnacle_die1.wav", "npc/barnacle/barnacle_die2.wav" }
+local MIN_BOX = 4
+local GUTS = 4
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -80,7 +88,7 @@ function ENT:Initialize()
 	self:SetLength(self.BaseSegments)
 	local filter = function(e)
 		return e ~= self and not e:IsPlayer() and not e:IsNPC() and not e:IsNextBot() and e:GetClass() ~= "evil_snake"
-			and not e.EvilDowned
+			and not e.EvilDowned and not e.EvilHitboxOwner
 	end
 	local joints = EvilSnake.Layout(self:GetPos(), self:GetAngles().y, self.BaseSegments, filter)
 	self.Chain = EvilSnake.Chain.New(joints, filter)
@@ -92,8 +100,12 @@ function ENT:Initialize()
 	self.Stomach.onDigest = function(v) self:Absorb(v) end
 	self.Mind = EvilSnake.Brain.New()
 	self.Tongue = EvilSnake.Tongue.New()
+	self.Hitbox = Evil.Hitbox(self)
+	self.Born = CurTime()
 	self:SetDigest(1)
 	self:Sharpen()
+	self:Toughen()
+	self:Box()
 end
 
 function ENT:Sharpen()
@@ -109,6 +121,7 @@ function ENT:Sharpen()
 	s.reel = 1 + REEL * strength
 	s.gulp = 1 + GULP_FASTER * strength
 	s.tire = 1 + TIRE * mind:Edge("resilience")
+	s.tough = 1 + TOUGH * mind:Edge("resilience")
 	s.digest = 1 + DIGEST * hunger
 	s.keep = 1 + KEEP * hunger
 	s.hear = 1 + HEAR * mind:Edge("firearms")
@@ -238,6 +251,7 @@ function ENT:Grow()
 	self:SetGirth(girth)
 	EvilSnake.Chain.Swell(self.Chain, girth)
 	self:Bounds()
+	if not self.Dead then self:Box() end
 	self.Dirty = true
 end
 
@@ -245,6 +259,8 @@ function ENT:Absorb(v)
 	local lessons = self.Mind:Learn(v)
 	self:Sharpen()
 	self:Grow()
+	self:Toughen()
+	self:Heal(self.Toughness * Setting("meal_heal"))
 	hook.Run("EvilSnakeAbsorbed", self, v, lessons)
 end
 
@@ -379,7 +395,8 @@ end
 local function Free(ent, pos, snake)
 	return not util.TraceHull({
 		start = pos, endpos = pos, mins = ent:OBBMins(), maxs = ent:OBBMaxs(),
-		mask = ent:IsPlayer() and MASK_PLAYERSOLID or MASK_NPCSOLID, filter = { ent, snake },
+		mask = ent:IsPlayer() and MASK_PLAYERSOLID or MASK_NPCSOLID,
+		filter = function(e) return e ~= ent and e ~= snake and not e.EvilHitboxOwner end,
 	}).StartSolid
 end
 
@@ -423,6 +440,181 @@ function ENT:OnRemove()
 	self.Tongue:Drop(self)
 	self:Release()
 	self.Stomach:Vacate()
+	self.Hitbox:Clear()
+end
+
+function ENT:Toughen()
+	local max = math.max(Setting("health") * math.max(self:Weight(), 1e-3) ^ Setting("size_health") * self.Sharp.tough, 1)
+	local old = self.Toughness
+	if old and math.abs(old - max) < 0.5 then return end
+	self.Hp = old and self.Hp * max / old or max
+	self.Toughness = max
+	self:SetMaxHealth(math.ceil(max))
+	self:SetHealth(math.ceil(self.Hp))
+end
+
+function ENT:Heal(amount)
+	if self.Dead or amount <= 0 or self.Hp >= self.Toughness then return end
+	self.Hp = math.min(self.Hp + amount, self.Toughness)
+	local hp = math.ceil(self.Hp)
+	if hp ~= self:Health() then self:SetHealth(hp) end
+end
+
+function ENT:Regen(now, dt)
+	local rate = Setting("regen")
+	if rate <= 0 or now - (self.LastHurt or -math.huge) < Setting("regen_delay") then return end
+	self:Heal(rate * dt)
+end
+
+function ENT:Box()
+	local x = self.Chain.x
+	local r, n = self:Radius(), #x
+	local body, tail = EvilSnake.Shape()
+	self.Hitbox:Place(x, function(i)
+		return math.max(r * EvilSnake.Profile((i - 1) / math.max(n - 1, 1), body, tail), MIN_BOX)
+	end)
+end
+
+function ENT:Douse()
+	if not self:IsOnFire() then return end
+	local wet = (self.Chain.wet[1] or 0) > 0
+	if wet or not self.Dead and (Setting("killable") == 0 or Setting("dmg_fire") <= 0) then self:Extinguish() end
+end
+
+local function Unsuppressed(fn)
+	local ply = GetPredictionPlayer()
+	if IsValid(ply) then SuppressHostEvents(NULL) end
+	fn()
+	if IsValid(ply) then SuppressHostEvents(ply) end
+end
+
+function ENT:Bleed(pos, size)
+	local fx = EffectData()
+	fx:SetOrigin(pos)
+	fx:SetColor(BLOOD_COLOR_RED)
+	fx:SetScale(size)
+	util.Effect("BloodImpact", fx, true, true)
+end
+
+function ENT:Cry(sounds)
+	local pitch, level, loud = self:Voice(1)
+	if pitch then self:EmitSound(table.Random(sounds), level, pitch * math.Rand(0.9, 1.1), loud) end
+end
+
+function ENT:HitPos(dmg)
+	local pos = dmg:GetDamagePosition()
+	if pos:IsZero() then return self.Chain.x[1] end
+	if Evil.AreaDamage(dmg) then return self:Nearest(pos) end
+	return pos
+end
+
+function ENT:Where(dmg)
+	if Evil.AreaDamage(dmg) then return Setting("body_damage") end
+	local pos, part = dmg:GetDamagePosition(), self.EvilStruckPart
+	local head
+	if pos:IsZero() then
+		head = not part or part.EvilIndex == 1
+	else
+		local x, r = self.Chain.x, self:Radius()
+		local at = EvilSnake.HeadPoints(x[1], x[2], r, self.Chain.up)
+		head = pos:Distance(at) <= EvilSnake.HeadRadius(r) * HEAD_HIT
+	end
+	return Setting(head and "head_damage" or "body_damage")
+end
+
+local FROM = { player = "from_players", npc = "from_npcs", world = "from_world" }
+
+function ENT:Exposed()
+	return self.Held ~= nil or IsValid(self.Tongue.ent)
+end
+
+function ENT:OnTakeDamage(dmg)
+	local now = CurTime()
+	if self.Dead or Setting("killable") == 0 or now < self.Born + Setting("spawn_grace") or now < (self.HurtUntil or 0) then return end
+	if Setting("exposed_only") ~= 0 and not self:Exposed() then return end
+	local who, by = Evil.Attacker(dmg)
+	local scale = Evil.DamageScale(EvilSnake.Settings, dmg) * self:Where(dmg) * Setting(FROM[who])
+	if scale <= 0 then return end
+	local amount = self.Hitbox:Fresh(dmg) * scale - Setting("armor")
+	if amount <= 0 then return end
+	local override = hook.Run("EvilSnakeHurt", self, dmg, amount)
+	if override == false then return end
+	if isnumber(override) then amount = override end
+	if amount <= 0 then return end
+	self.Hp = self.Hp - amount
+	self:SetHealth(math.max(math.ceil(self.Hp), 0))
+	self.LastHurt = now
+	local gap = Setting("hurt_gap")
+	if gap > 0 then self.HurtUntil = now + gap end
+	Unsuppressed(function()
+		self:Bleed(self:HitPos(dmg), 1)
+		if now >= (self.NextPain or 0) then
+			self.NextPain = now + PAIN_GAP
+			self:Cry(PAIN)
+		end
+	end)
+	if self.Hp <= 0 then return self:Die(dmg) end
+	self:Shaken(amount, now)
+	self:Avenge(by)
+end
+
+function ENT:Shaken(amount, now)
+	self.Shock = (self.Shock or 0) * math.exp(-(now - (self.ShockAt or now)) / SHOCK_FADE) + amount
+	self.ShockAt = now
+	local need = Setting("drop_damage")
+	if need <= 0 or self.Shock < need or not self:Exposed() then return end
+	self.Shock = 0
+	self:Spit()
+end
+
+function ENT:Spit()
+	local tongued = IsValid(self.Tongue.ent)
+	local ent = tongued and self.Tongue.ent or self.Held and self.Held.ent
+	if not IsValid(ent) then return end
+	ent.EvilSnakeFree = CurTime() + ESCAPE_GRACE
+	if tongued then
+		self.Tongue:Drop(self)
+		Evil.Up(ent)
+	else
+		self:Release()
+	end
+	self:Fling(ent)
+	hook.Run("EvilSnakeSpat", self, ent)
+end
+
+function ENT:Avenge(by)
+	if Setting("retaliate") == 0 or by == self.Prey or self:Exposed() or not Edible(by, self) then return end
+	self.Prey = by
+	self:SetPrey(by)
+end
+
+function ENT:Die(dmg)
+	self.Dead = true
+	self:SetDead(true)
+	self.Hp = 0
+	self:SetHealth(0)
+	self.Tongue.target = nil
+	self.Tongue:Drop(self)
+	self:Release()
+	self.Stomach:Vacate()
+	self.Hitbox:Clear()
+	Evil.Absent(self)
+	self.Prey = nil
+	self:SetPrey(NULL)
+	local c = self.Chain
+	c.walls, c.ceilings = 0, 0
+	EvilSnake.Chain.Drive(c, EvilSnake.Chain.HeadYaw(c), 0)
+	Unsuppressed(function()
+		for i = 1, #c.x, GUTS do self:Bleed(c.x[i], 2) end
+		self:Cry(DIE)
+	end)
+	local attacker, inflictor = dmg:GetAttacker(), dmg:GetInflictor()
+	hook.Run("EvilSnakeKilled", self, attacker, inflictor)
+	if Setting("npc_kill") ~= 0 then
+		ProtectedCall(function() hook.Run("OnNPCKilled", self, attacker, inflictor) end)
+	end
+	SafeRemoveEntityDelayed(self, Setting("corpse_time"))
+	self.Dirty = true
 end
 
 function EvilSnake.Reaches(ent, from, to, steps, reach)
@@ -531,10 +723,12 @@ function ENT:Think()
 	local dt = now - self.LastThink
 	self.LastThink = now
 	local c = self.Chain
-	if now >= (self.NextDecide or 0) or not self.Sharp then
+	local alive = not self.Dead
+	if alive and now >= (self.NextDecide or 0) then
 		self.NextDecide = now + DECIDE
 		self:Sharpen()
 		self:Grow()
+		self:Toughen()
 		self:Decide(now)
 	elseif #self.Stomach.transit > 0 then
 		self:Grow()
@@ -543,14 +737,22 @@ function ENT:Think()
 	if EvilSnake.Chain.Update(c, dt) then
 		self:SetPos(c.x[1])
 		self.Dirty = true
+		if alive then self:Box() end
 	end
 	self:Splash(now)
+	self:Douse()
 	local slide = math.Round(c.slide or 0)
 	if slide ~= self:GetSlide() then self:SetSlide(slide) end
-	self:Catch(now)
+	if alive then
+		self:Catch(now)
+		self.Hitbox:Think(now)
+		self:Regen(now, dt)
+	end
 	if self.Tongue:Think(self, now, dt) then self.Dirty = true end
-	self:Hold(now)
-	if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c), self.Sharp.digest) then self.Dirty = true end
+	if alive then
+		self:Hold(now)
+		if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c), self.Sharp.digest) then self.Dirty = true end
+	end
 	if self.Dirty and now >= (self.NextSend or 0) then
 		self.Dirty = false
 		self.NextSend = now + EvilSnake.SEND

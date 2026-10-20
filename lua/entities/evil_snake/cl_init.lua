@@ -19,6 +19,7 @@ local KEEP = 8
 local DRIFT = 0.05
 local FIT = 0.75
 local SHUT = { 0.9, 1.15 }
+local DEAD_DIM = 0.55
 
 local min = math.min
 
@@ -209,8 +210,10 @@ function ENT:Think()
 	self.Bulges = bulges
 	if mine then EvilSnake.Inside(Blob(pose, mine.at), r * mine.size) end
 	local target = held and held.ent or self:GetPrey()
-	self.Body.look = not held and EvilSnake.Tongue.Look(tongue)
-		or IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter()) or nil
+	local dead = self:GetDead()
+	self.Body.dim = dead and DEAD_DIM or nil
+	self.Body.look = not dead and (not held and EvilSnake.Tongue.Look(tongue)
+		or IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter())) or nil
 	local mins, maxs = EvilSnake.Body.Bounds(pose, fattest, r)
 	self:SetRenderBoundsWS(EvilSnake.Tongue.Bounds(tongue, mins, maxs))
 end

@@ -214,6 +214,8 @@ function Body.Draw(body, pts, bulges, R, link, mouth, up)
 	if #pts < 2 then return end
 	Relight(body, pts)
 	cr, cg, cb = EvilSnake.Color()
+	local dim = body.dim
+	if dim then cr, cg, cb = cr * dim, cg * dim, cb * dim end
 	local detail = Detail(pts, R)
 	local near = math.Clamp(math.ceil(link / (R * SPACING)), 2, SUB)
 	local sub = math.Round(Lerp(detail, near, 1))

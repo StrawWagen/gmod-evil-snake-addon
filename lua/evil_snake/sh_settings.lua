@@ -82,27 +82,74 @@ EvilSnake.SETTINGS = {
 		help = "Physics passes per step. More keeps the body from stretching but costs more" },
 }
 
+EvilSnake.HURT = {
+	{ name = "killable", default = 1, min = 0, max = 1, label = "Killable",
+		help = "Takes damage and dies. At 0 nothing hurts it" },
+	{ name = "health", default = 500, min = 1, max = 20000, decimals = 0, label = "Health",
+		help = "Health a fresh snake spawns with" },
+	{ name = "size_health", default = 0.5, min = 0, max = 2, decimals = 2, label = "Health from size",
+		help = "How much getting bigger adds to its health. At 1 it goes up with its weight, at 0 eating never makes it tougher" },
+	{ name = "regen", default = 0, min = 0, max = 200, decimals = 1, label = "Regeneration",
+		help = "Health it heals a second" },
+	{ name = "regen_delay", default = 5, min = 0, max = 60, decimals = 1, label = "Regeneration delay",
+		help = "Seconds after getting hurt before it starts healing" },
+	{ name = "meal_heal", default = 0.25, min = 0, max = 1, decimals = 2, label = "Heals from eating",
+		help = "Share of its health it gets back from each meal once it's digested" },
+	{ name = "armor", default = 0, min = 0, max = 200, decimals = 0, label = "Armor",
+		help = "Taken off every hit. Anything weaker does nothing" },
+	{ name = "head_damage", default = 2, min = 0, max = 10, decimals = 2, label = "Head damage",
+		help = "Damage multiplier for hits to the head" },
+	{ name = "body_damage", default = 1, min = 0, max = 10, decimals = 2, label = "Body damage",
+		help = "Damage multiplier for hits anywhere else, and for explosions, fire and gas" },
+	{ name = "from_players", default = 1, min = 0, max = 5, decimals = 2, label = "Damage from players" },
+	{ name = "from_npcs", default = 1, min = 0, max = 5, decimals = 2, label = "Damage from NPCs" },
+	{ name = "from_world", default = 1, min = 0, max = 5, decimals = 2, label = "Damage from the world",
+		help = "Damage nobody gets credit for, like loose fire, stray props and trigger hurts" },
+	{ name = "exposed_only", default = 0, min = 0, max = 1, label = "Only hurt while eating",
+		help = "Only takes damage while it's got someone in its mouth or on its tongue" },
+	{ name = "hurt_gap", default = 0, min = 0, max = 5, decimals = 2, label = "Invulnerable after hits",
+		help = "Seconds it ignores everything after taking a hit" },
+	{ name = "spawn_grace", default = 0, min = 0, max = 60, decimals = 1, label = "Spawn protection",
+		help = "Seconds a new snake can't be hurt" },
+	{ name = "drop_damage", default = 60, min = 0, max = 1000, decimals = 0, label = "Hurt to let go",
+		help = "Damage it has to take in a couple of seconds to spit out who it's holding. At 0 it never lets go" },
+	{ name = "retaliate", default = 1, min = 0, max = 1, label = "Goes after attackers",
+		help = "Turns on whoever hurts it if it can eat them" },
+	{ name = "corpse_time", default = 10, min = 0, max = 120, decimals = 0, label = "Corpse time",
+		help = "Seconds the body lies there after it dies" },
+	{ name = "npc_kill", default = 1, min = 0, max = 1, label = "Counts as an NPC kill",
+		help = "Its death goes through the NPC death hook, so kill feeds, scoring and XP mods notice it" },
+}
+table.Add(EvilSnake.HURT, Evil.DamageRows())
+
+for i, s in ipairs(EvilSnake.SETTINGS) do
+	if s.name == "instant_npcs" then
+		for k, h in ipairs(EvilSnake.HURT) do table.insert(EvilSnake.SETTINGS, i + k, h) end
+		break
+	end
+end
+
 EvilSnake.PRESETS = {
 	{ name = "chill", label = "Chill", values = {
-		hunt_npcs = 1, hunt_players = 1, escape_presses = 8,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 8, health = 250, regen = 0,
 		sight_range = 800, bite_reach = 16, hold_time = 5, bulge_size = 2.2, bulge_speed = 35,
 		growth = 1, fattening = 0.25, girth_max = 3.5, learning = 0.5, habituation = 1, wits = 0.5,
 		wander = 1, hunt_speed = 80, wander_speed = 30, turn_rate = 70, sway = 45, wavelength = 220,
 	} },
 	{ name = "normal", label = "Normal", values = {
-		hunt_npcs = 1, hunt_players = 1, escape_presses = 12,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 12, health = 500, regen = 0,
 		sight_range = 3000, bite_reach = 24, hold_time = 3, bulge_size = 1.8, bulge_speed = 80,
 		growth = 2, fattening = 0.15, girth_max = 3, learning = 1, habituation = 0.5, wits = 1,
 		wander = 1, hunt_speed = 170, wander_speed = 60, turn_rate = 120, sway = 35, wavelength = 150,
 	} },
 	{ name = "aggressive", label = "Aggressive", values = {
-		hunt_npcs = 1, hunt_players = 1, escape_presses = 15,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 15, health = 1200, regen = 5,
 		sight_range = 5500, bite_reach = 40, hold_time = 2, bulge_size = 1.6, bulge_speed = 180,
 		growth = 4, fattening = 0.12, girth_max = 3, learning = 1.5, habituation = 0.3, wits = 1.5,
 		wander = 1, hunt_speed = 320, wander_speed = 110, turn_rate = 240, sway = 25, wavelength = 120,
 	} },
 	{ name = "unhinged", label = "Unhinged", values = {
-		hunt_npcs = 1, hunt_players = 1, escape_presses = 20,
+		hunt_npcs = 1, hunt_players = 1, escape_presses = 20, health = 5000, regen = 25,
 		sight_range = 10000, bite_reach = 90, hold_time = 0.8, bulge_size = 2.8, bulge_speed = 600,
 		growth = 12, fattening = 0.4, girth_max = 6, learning = 4, habituation = 0, wits = 3,
 		wander = 1, hunt_speed = 700, wander_speed = 280, turn_rate = 600, sway = 60, wavelength = 70,

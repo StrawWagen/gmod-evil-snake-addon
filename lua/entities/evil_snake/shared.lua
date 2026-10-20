@@ -13,6 +13,7 @@ function ENT:SetupDataTables()
 	self:NetworkVar("Float", 2, "Slide")
 	self:NetworkVar("Float", 3, "Digest")
 	self:NetworkVar("Entity", 0, "Prey")
+	self:NetworkVar("Bool", 0, "Dead")
 end
 
 local WEIGHT = 14 * 14 * 28 * 17
