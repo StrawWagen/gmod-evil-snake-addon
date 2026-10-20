@@ -127,7 +127,7 @@ function ENT:Initialize()
 	self.LastThink = CurTime()
 	self.Dirty = true
 	self.WanderYaw = self:GetAngles().y
-	self.Stomach = EvilSnake.Stomach.New()
+	self.Stomach = EvilSnake.Stomach.New(self)
 	self.Stomach.onDigest = function(v) self:Absorb(v) end
 	self.Mind = EvilSnake.Brain.New()
 	self.Tongue = EvilSnake.Tongue.New()
@@ -335,8 +335,27 @@ end
 function ENT:Rethink()
 	self.Mind = EvilSnake.Brain.Rebuild(self.Stomach.victims)
 	self:Sharpen()
-	self.Stomach.rev = (self.Stomach.rev + 1) % 65536
+	self.Stomach:Changed()
 	self:Grow()
+end
+
+function ENT:EvilStomachSummary()
+	local mind = self.Mind
+	if not mind then return end
+	local knows = {}
+	for i, aspect in ipairs(EvilSnake.ASPECTS) do knows[i] = { aspect, mind:Knows(aspect) } end
+	knows[#knows + 1] = { "untenable", self.Steadied or 0 }
+	return {
+		base = self.BaseSegments, length = self:GetLength(), girth = self:GetGirth(),
+		power = mind.power, level = mind:Level(), knows = knows,
+	}
+end
+
+function ENT:EvilStomachProgress()
+	local links = math.max(#self.Chain.x - 1, 1)
+	local out = {}
+	for _, m in ipairs(self.Stomach.transit) do out[#out + 1] = { m.victim.n, math.Clamp(m.at / links, 0, 1) } end
+	return out
 end
 
 function ENT:Voice(size)

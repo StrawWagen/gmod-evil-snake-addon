@@ -27,7 +27,6 @@ if SERVER then
 	include("evil_snake/sv_fungus.lua")
 	include("evil_snake/sv_propellor.lua")
 	include("evil_snake/sv_debug.lua")
-	include("evil_snake/sv_stomach_view.lua")
 else
 	include("evil_snake/cl_util.lua")
 	include("evil_snake/cl_skin.lua")

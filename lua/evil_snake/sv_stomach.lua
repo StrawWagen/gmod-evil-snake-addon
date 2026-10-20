@@ -1,5 +1,5 @@
 EvilSnake = EvilSnake or {}
-local Stomach = {}
+local Stomach = setmetatable({}, { __index = Evil.StomachMeta })
 Stomach.__index = Stomach
 EvilSnake.Stomach = Stomach
 
@@ -10,20 +10,18 @@ local PREY_SCALE = { 0.6, 1.6 }
 local MAX_TRANSIT = 32
 local DIGESTED_HOLD = 1.5
 
-function Stomach.New()
-	return setmetatable({ victims = {}, transit = {}, rev = 0 }, Stomach)
+function Stomach.New(owner)
+	local st = Evil.Stomach(owner)
+	st.transit = {}
+	return setmetatable(st, Stomach)
 end
 
 function Stomach:Add(v)
-	v.n = #self.victims + 1
-	v.at = v.at or CurTime()
 	v.kind = v.kind or "thing"
 	v.size = v.size or 1
 	v.mass = v.mass or v.size
 	v.brain = v.brain or EvilSnake.Brainpower(v.kind, v.tricks)
-	v.digested = v.digested or false
-	self.victims[v.n] = v
-	return v
+	return Evil.StomachMeta.Add(self, v)
 end
 
 function EvilSnake.PreySize(ent)
@@ -34,37 +32,12 @@ function EvilSnake.BulgeSize(size)
 	return 1 + (Setting("bulge_size") - 1) * size
 end
 
-local function Weapon(ent)
-	local wep = ent.GetActiveWeapon and ent:GetActiveWeapon()
-	return IsValid(wep) and wep:GetClass() or nil
-end
-
-local function Name(ent)
-	if ent:IsPlayer() then return ent:Nick() end
-	local name = ent:GetName()
-	return name ~= "" and name or ent:GetClass()
-end
-
 function Stomach:Record(ent)
-	local player = ent:IsPlayer()
-	return self:Add({
-		class = ent:GetClass(),
-		name = Name(ent),
-		model = ent:GetModel(),
-		player = player,
-		steamid = player and ent:SteamID64() or nil,
+	return self:Eat(ent, {
 		kind = EvilSnake.Kind(ent),
-		weapon = Weapon(ent),
-		health = ent:GetMaxHealth(),
 		size = EvilSnake.PreySize(ent),
-		tricks = player and EvilSnake.Souls:Digest(ent) or nil,
+		tricks = ent:IsPlayer() and EvilSnake.Souls:Digest(ent) or nil,
 	})
-end
-
-function Stomach:Settle(v)
-	if v.digested then return end
-	v.digested = CurTime()
-	if self.onDigest then self.onDigest(v) end
 end
 
 local function Leave(ply)
@@ -154,10 +127,6 @@ function Stomach:Digest(dt, links, link, pace)
 		if m.at >= links then self:Pass(table.remove(transit, i)) end
 	end
 	return true
-end
-
-function Stomach:Count()
-	return #self.victims
 end
 
 function Stomach:Mass()
