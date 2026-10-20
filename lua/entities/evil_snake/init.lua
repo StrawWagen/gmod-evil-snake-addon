@@ -476,6 +476,12 @@ function ENT:Release()
 	hook.Run("EvilSnakeReleased", self, ent)
 end
 
+local function Notice(snake, ent)
+	if not GAMEMODE.SendDeathNotice or not (ent:IsPlayer() or ent:IsNPC() or ent:IsNextBot()) then return end
+	local victim = ent:IsPlayer() and ent or GAMEMODE:GetDeathNoticeEntityName(ent)
+	GAMEMODE:SendDeathNotice(GAMEMODE:GetDeathNoticeEntityName(snake), "evil_snake", victim, 0)
+end
+
 function ENT:Hold(now)
 	local held = self.Held
 	if not held then return end
@@ -487,6 +493,7 @@ function ENT:Hold(now)
 	local v = self.Stomach:Swallow(ent, GULP_AT)
 	self:Chomp(held.prey)
 	hook.Run("EvilSnakeSwallowed", self, v, ent)
+	Notice(self, ent)
 	if ent:IsPlayer() then
 		self:Unstruggle(ent)
 		Evil.Unpose(ent, self)

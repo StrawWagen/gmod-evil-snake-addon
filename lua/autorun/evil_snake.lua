@@ -18,6 +18,7 @@ include("evil_snake/sh_settings.lua")
 include("evil_snake/sh_body.lua")
 include("evil_snake/sh_stomach.lua")
 if SERVER then
+	resource.AddFile("materials/killicons/evil_snake.png")
 	include("evil_snake/sv_chain.lua")
 	include("evil_snake/sv_path.lua")
 	include("evil_snake/sv_brain.lua")

@@ -1,6 +1,7 @@
 include("shared.lua")
 
 language.Add("evil_snake", "Evil snake")
+killicon.Add("evil_snake", "killicons/evil_snake.png", Color(170, 210, 80))
 
 local ASK = 1
 local SLITHER = {
