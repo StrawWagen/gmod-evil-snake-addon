@@ -4,9 +4,11 @@
 
 It hunts NPCs and players, holds them half in its mouth for a bit, then pulls them down. You can watch them bulge all the way to the tail. Every meal makes it longer and fatter, and it learns from the minds of whatever it eats. It also picks up on how players get away from it, and gets better at stopping exactly that once it eats them.
 
+On the [Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3823748254).
+
 ## Needs
 
-- [Syhgma's Evil API](https://github.com/xandwrp/gmod-evil-api)
+- [Syhgma's Evil API](https://steamcommunity.com/sharedfiles/filedetails/?id=3823740816) ([source](https://github.com/xandwrp/gmod-evil-api))
 
 Optional:
 
