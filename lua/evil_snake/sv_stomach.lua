@@ -8,6 +8,7 @@ local Setting = EvilSnake.Setting
 local PREY_SIZE = 40
 local PREY_SCALE = { 0.6, 1.6 }
 local MAX_TRANSIT = 32
+local DIGESTED_HOLD = 1.5
 
 function Stomach.New()
 	return setmetatable({ victims = {}, transit = {}, rev = 0 }, Stomach)
@@ -68,12 +69,7 @@ end
 local function Leave(ply)
 	if ply.EvilSnakeMeal then ply.EvilSnakeMeal.ply = nil end
 	ply.EvilSnakeMeal, ply.EvilSnakeSkip, ply.EvilSnakeSkipReady, ply.EvilSnakeDone = nil, nil, nil, nil
-	if ply.EvilSnakeMuffled then
-		ply.EvilSnakeMuffled = nil
-		ply:SetDSP(0, false)
-	end
 	ply:SetNW2Bool("EvilSnakeInside", false)
-	ply:SetNW2Entity("EvilSnakeBelly", NULL)
 	ply:SetNW2Bool("EvilSnakeDone", false)
 	ply:SetNW2Float("EvilSnakeSkip", 0)
 end
@@ -88,7 +84,7 @@ local function Done(m)
 	local ply = m.ply
 	m.ply = nil
 	if not IsValid(ply) or ply.EvilSnakeMeal ~= m then return end
-	ply.EvilSnakeDone = CurTime() + EvilSnake.DIGESTED_HOLD
+	ply.EvilSnakeDone = CurTime() + DIGESTED_HOLD
 	ply.EvilSnakeSkip = nil
 	ply:SetNW2Float("EvilSnakeSkip", 0)
 	ply:SetNW2Bool("EvilSnakeDone", true)

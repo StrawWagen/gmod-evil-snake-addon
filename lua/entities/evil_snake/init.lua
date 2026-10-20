@@ -22,8 +22,7 @@ local SQUISH = {
 }
 local GULP = { "npc/barnacle/barnacle_gulp1.wav", "npc/barnacle/barnacle_gulp2.wav" }
 local GULP_DELAY = 0.35
-local GULP_AT = EvilSnake.GULP_AT
-local MUFFLE = 14
+local GULP_AT = 1
 local EAT_LEVEL = 80
 local MIN_REACH = 4
 local PRESENCE_REACH = 450
@@ -305,11 +304,6 @@ function ENT:Hold(now)
 	if ent:IsPlayer() then
 		self:Unstruggle(ent)
 		Evil.Unpose(ent, self)
-		ent:SetNW2Entity("EvilSnakeBelly", self)
-		if Setting("belly_view") ~= 0 then
-			ent.EvilSnakeMuffled = true
-			ent:SetDSP(MUFFLE, false)
-		end
 		ent:KillSilent()
 	else
 		ent:Remove()
