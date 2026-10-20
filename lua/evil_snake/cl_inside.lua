@@ -37,7 +37,7 @@ hook.Add("CalcView", "EvilSnakeInside", function(ply, _, angles, fov)
 		focus = lastOrigin and lastOrigin + lastAngles:Forward() * BACK or blob.pos
 		lastTime = now
 	end
-	if fresh then
+	if blob then
 		focus = LerpVector(1 - math.exp(-CATCH * (now - lastTime)), focus, blob.pos)
 	end
 	lastTime = now
@@ -51,7 +51,7 @@ end)
 hook.Add("HUDPaint", "EvilSnakeInside", function()
 	local ply = LocalPlayer()
 	if not IsValid(ply) or ply:Alive() or not ply:GetNW2Bool("EvilSnakeInside") then return end
-	if EvilSnake.Setting("skip_swallow") == 0 then return end
+	if EvilSnake.Setting("skip_swallow") == 0 or ply:GetNW2Bool("EvilSnakeDone") then return end
 	local start = ply:GetNW2Float("EvilSnakeSkip", 0)
 	local k = start > 0 and math.Clamp((CurTime() - start) / EvilSnake.SKIP_HOLD, 0, 1) or 0
 	local cx, cy = ScrW() * 0.5, ScrH() * KEY_Y

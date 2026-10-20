@@ -8,6 +8,7 @@ local Setting = EvilSnake.Setting
 local PREY_SIZE = 40
 local PREY_SCALE = { 0.6, 1.6 }
 local MAX_TRANSIT = 32
+local DIGESTED_HOLD = 1.5
 
 function Stomach.New()
 	return setmetatable({ victims = {}, transit = {}, rev = 0 }, Stomach)
@@ -65,18 +66,32 @@ function Stomach:Settle(v)
 	if self.onDigest then self.onDigest(v) end
 end
 
+local function Leave(ply)
+	if ply.EvilSnakeMeal then ply.EvilSnakeMeal.ply = nil end
+	ply.EvilSnakeMeal, ply.EvilSnakeSkip, ply.EvilSnakeSkipReady, ply.EvilSnakeDone = nil, nil, nil, nil
+	ply:SetNW2Bool("EvilSnakeInside", false)
+	ply:SetNW2Bool("EvilSnakeDone", false)
+	ply:SetNW2Float("EvilSnakeSkip", 0)
+end
+
 local function Out(m)
 	local ply = m.ply
+	if IsValid(ply) and ply.EvilSnakeMeal == m then Leave(ply) end
 	m.ply = nil
-	if IsValid(ply) and ply.EvilSnakeMeal == m then
-		ply.EvilSnakeMeal, ply.EvilSnakeSkip, ply.EvilSnakeSkipReady = nil, nil, nil
-		ply:SetNW2Bool("EvilSnakeInside", false)
-		ply:SetNW2Float("EvilSnakeSkip", 0)
-	end
+end
+
+local function Done(m)
+	local ply = m.ply
+	m.ply = nil
+	if not IsValid(ply) or ply.EvilSnakeMeal ~= m then return end
+	ply.EvilSnakeDone = CurTime() + DIGESTED_HOLD
+	ply.EvilSnakeSkip = nil
+	ply:SetNW2Float("EvilSnakeSkip", 0)
+	ply:SetNW2Bool("EvilSnakeDone", true)
 end
 
 function Stomach:Pass(m)
-	Out(m)
+	Done(m)
 	self:Settle(m.victim)
 end
 
@@ -90,7 +105,7 @@ function Stomach:Swallow(ent, at)
 	local m = { victim = v, at = at or 0, size = EvilSnake.BulgeSize(v.size), ply = ent:IsPlayer() and ent or nil }
 	self.transit[#self.transit + 1] = m
 	if m.ply then
-		if ent.EvilSnakeMeal then Out(ent.EvilSnakeMeal) end
+		if ent.EvilSnakeMeal then Leave(ent) end
 		ent.EvilSnakeMeal = m
 		ent:SetNW2Bool("EvilSnakeInside", true)
 	end
@@ -98,7 +113,7 @@ function Stomach:Swallow(ent, at)
 end
 
 hook.Add("PlayerSpawn", "EvilSnakeInside", function(ply)
-	if ply.EvilSnakeMeal then Out(ply.EvilSnakeMeal) end
+	if ply.EvilSnakeMeal then Leave(ply) end
 end)
 
 local function Unskip(ply)
@@ -109,13 +124,17 @@ end
 
 hook.Add("PlayerDeathThink", "EvilSnakeInside", function(ply)
 	if not ply.EvilSnakeMeal then return end
+	local now = CurTime()
+	if ply.EvilSnakeDone then
+		if now >= ply.EvilSnakeDone then ply:Spawn() end
+		return false
+	end
 	local down = ply:KeyDown(IN_JUMP)
 	if not down then ply.EvilSnakeSkipReady = true end
 	if Setting("skip_swallow") == 0 or not down or not ply.EvilSnakeSkipReady then
 		Unskip(ply)
 		return false
 	end
-	local now = CurTime()
 	if not ply.EvilSnakeSkip then
 		ply.EvilSnakeSkip = now
 		ply:SetNW2Float("EvilSnakeSkip", now)
