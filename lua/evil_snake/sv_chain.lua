@@ -40,7 +40,7 @@ local HOVER = 0.9
 local STICK = 1
 local CLING_GRIP = 1
 local HUG = 0.5
-local UP_EASE = 6
+local UP_EASE = 4
 local LOOK = 3
 local NECK = 2
 local DODGE = 1.5
@@ -252,6 +252,7 @@ local function Contact(c, i, pos, hit, ahead)
 	local prev, lead = c.cn[i], i > 1 and c.cn[i - 1] or nil
 	if ahead and (c.walls > 0 or c.ceilings > 0) and Touch(c, i, pos, ahead) then return end
 	if i == 1 and hit and Touch(c, i, pos, hit.z >= FLOOR and -UP or -hit) then return end
+	if i == 1 and Steep(c, prev) and Touch(c, i, pos, -prev) then return end
 	if Touch(c, i, pos, -UP) then return end
 	if Steep(c, prev) and Touch(c, i, pos, -prev) then return end
 	if Steep(c, lead) and Touch(c, i, pos, -lead) then return end
@@ -551,6 +552,22 @@ local function Separate(c, p, found)
 	end
 end
 
+function Chain.Away(yaw, out)
+	local h = Angle(0, yaw, 0):Forward()
+	local d = h:Dot(out)
+	if d >= 0 then return yaw end
+	h = h - out * (2 * d)
+	return math.deg(math.atan2(h.y, h.x))
+end
+
+local function Land(c, wall)
+	local out = Vector(wall.x, wall.y, 0)
+	out:Normalize()
+	c.landed, c.aim = out, nil
+	if c.yaw then c.yaw = Chain.Away(c.yaw, out) end
+	if c.goal then c.goal = Chain.Away(c.goal, out) end
+end
+
 local function Tick(c)
 	local x, old, p, cn, cd = c.x, c.old, c.p, c.cn, c.cd
 	local n = #x
@@ -653,6 +670,7 @@ local function Tick(c)
 		end
 	end
 	local moved, slid = 0, 0
+	local was = cn[1]
 	for i = 1, n do
 		local along = (p[math.min(i + 1, n)] - p[math.max(i - 1, 1)]):GetNormalized()
 		local to, climbed, snapped = Collide(c, i, x[i], p[i], along, gravity)
@@ -660,6 +678,7 @@ local function Tick(c)
 		moved = math.max(moved, to:DistToSqr(old[i]))
 		if cn[i] then slid = slid + math.sqrt((to.x - old[i].x) ^ 2 + (to.y - old[i].y) ^ 2) end
 	end
+	if c.climb < 0 and was and cn[1] and was.z < FLOOR and was.z > -FLOOR and cn[1].z >= FLOOR then Land(c, was) end
 	c.slide = slid / n / DT
 	c.up = LerpVector(math.min(1, UP_EASE * DT), c.up, cn[1] or UP)
 	c.up:Normalize()
