@@ -72,10 +72,6 @@ function Tongue.New()
 	}, Tongue)
 end
 
-function Tongue:Busy()
-	return IsValid(self.target) or IsValid(self.ent)
-end
-
 function Tongue:Pose(victim)
 	if victim == self.ent then return self.pos end
 end

@@ -776,7 +776,7 @@ function ENT:Catch(now)
 	local mouth = self:Mouth()
 	local from = self.LastMouth or mouth
 	self.LastMouth = mouth
-	if self.Held or self.Tongue:Busy() then return end
+	if self.Held or IsValid(self.Tongue.ent) then return end
 	local reach = Setting("bite_reach") * self.Sharp.reach
 	local travel = from:Distance(mouth)
 	local steps = math.ceil(travel / math.max(reach, MIN_REACH))
@@ -853,7 +853,7 @@ function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
 	local yaw = EvilSnake.Chain.HeadYaw(c)
-	if self.Held or self.Tongue:Busy() then
+	if self.Held or IsValid(self.Tongue.ent) then
 		self.Prey, self.LastHead, self.Route = nil, nil, nil
 		if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
 		EvilSnake.Chain.Drive(c, yaw, 0)
