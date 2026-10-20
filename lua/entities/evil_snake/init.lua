@@ -869,7 +869,7 @@ function ENT:WallNear(head, spot)
 	for k = 0, FOLLOW_WALLS - 1 do
 		local dir = Angle(0, k * 360 / FOLLOW_WALLS, 0):Forward()
 		local tr = util.TraceLine({ start = from, endpos = from + dir * FOLLOW_WALL_LOOK, mask = MASK_SOLID_BRUSHONLY })
-		if tr.Hit and math.abs(tr.HitNormal.z) < FOLLOW_STEEP then
+		if tr.Hit and not tr.HitSky and not tr.HitNoDraw and math.abs(tr.HitNormal.z) < FOLLOW_STEEP then
 			local score = from:Distance(tr.HitPos) + math.sqrt((tr.HitPos.x - spot.x) ^ 2 + (tr.HitPos.y - spot.y) ^ 2)
 			if not bestScore or score < bestScore then best, bestScore = tr, score end
 		end

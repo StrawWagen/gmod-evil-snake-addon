@@ -243,6 +243,7 @@ end
 local function Touch(c, i, pos, dir)
 	local tr = Hull(c, i, pos, pos + dir * PROBE)
 	if not tr.Hit or tr.StartSolid or not (tr.HitNormal.z > 0 or Clings(c, tr.HitNormal) > 0) then return false end
+	if tr.HitNormal.z < FLOOR and (tr.HitSky or tr.HitNoDraw) then return false end
 	c.cn[i], c.cd[i] = tr.HitNormal, tr.HitPos:Dot(tr.HitNormal)
 	return true
 end
