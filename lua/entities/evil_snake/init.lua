@@ -81,6 +81,12 @@ local NUDGE = 0.15
 local REPATH = 1
 local LEVEL = 48
 local WAYPOINT = 32
+local STAY = 0.7
+local OFF_LEVEL = 3
+local FLYING = 4
+local HIDDEN = 1.5
+local FRAIL = 1
+local SCARED = 0.3
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -240,18 +246,43 @@ function ENT:Noticed()
 	return Setting("sight_range") * math.max(self.Sharp.hear, self.Sharp.smell)
 end
 
-function ENT:FindPrey(from)
+local function Airborne(ent)
+	return ent:GetMoveType() == MOVETYPE_NOCLIP or not ent:IsOnGround() and ent:WaterLevel() < 2
+end
+
+function ENT:Keeps()
+	return self:Noticed() * LOSE * self.Sharp.keep
+end
+
+function ENT:Appeal(ent, from, d)
+	local score = d / (1 + self.Sharp.picky * EvilSnake.Worth(ent))
+	if not self:Level(ent:WorldSpaceCenter(), from) then score = score * OFF_LEVEL end
+	if Airborne(ent) then score = score * FLYING end
+	if not EvilSnake.Clear(self, from, ent) then score = score * HIDDEN end
+	local max = ent:GetMaxHealth()
+	if max > 0 then score = score / (1 + FRAIL * (1 - math.Clamp(ent:Health() / max, 0, 1))) end
+	if Evil.Afraid(ent) then score = score / (1 + SCARED) end
+	return score
+end
+
+function ENT:FindPrey(from, current)
 	local sight, s = Setting("sight_range"), self.Sharp
 	local now = CurTime()
 	local best, bestScore
+	if current then
+		local d = from:Distance(current:WorldSpaceCenter())
+		if d <= self:Keeps() then best, bestScore = current, self:Appeal(current, from, d) * STAY end
+	end
 	for _, ent in ipairs(ents.FindInSphere(from, self:Noticed())) do
-		if Edible(ent, self) then
+		if ent ~= current and Edible(ent, self) then
 			local d = from:Distance(ent:WorldSpaceCenter())
 			local reach = sight
 			if now - (ent.EvilSnakeShot or -math.huge) < HEARD then reach = sight * s.hear end
 			if Evil.Afraid(ent) then reach = math.max(reach, sight * s.smell) end
-			local score = d / (1 + s.picky * EvilSnake.Worth(ent))
-			if d < reach and (not bestScore or score < bestScore) then best, bestScore = ent, score end
+			if d < reach then
+				local score = self:Appeal(ent, from, d)
+				if not bestScore or score < bestScore then best, bestScore = ent, score end
+			end
 		end
 	end
 	return best
@@ -832,11 +863,11 @@ function ENT:Decide(now)
 	end
 	self.LastHead = Vector(head)
 
-	local prey = self.Prey
-	local edible = Edible(prey, self)
-	if not edible or head:Distance(prey:WorldSpaceCenter()) > self:Noticed() * LOSE * self.Sharp.keep then
-		if edible then EvilSnake.Watch(prey, self:Above(prey, head) and "climbed" or "outran") end
-		prey = self:FindPrey(head)
+	local old = self.Prey
+	local edible = Edible(old, self)
+	local prey = self:FindPrey(head, edible and old or nil)
+	if edible and prey ~= old and head:Distance(old:WorldSpaceCenter()) > self:Keeps() then
+		EvilSnake.Watch(old, self:Above(old, head) and "climbed" or "outran")
 	end
 	self.Prey = prey
 	if self:GetPrey() ~= (prey or NULL) then self:SetPrey(prey or NULL) end
@@ -847,7 +878,12 @@ function ENT:Decide(now)
 		local r = self:Radius()
 		if to.z > r then c.climb = 1 elseif to.z < -r then c.climb = -1 end
 		self:Drop(prey, head)
-		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed") * self.Sharp.speed, aim)
+		local near = r * 2 + WAYPOINT
+		if (Airborne(prey) or c.walls <= 0) and not self:Level(aim, head) and to.x * to.x + to.y * to.y < near * near then
+			EvilSnake.Chain.Drive(c, yaw, 0)
+		else
+			EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("hunt_speed") * self.Sharp.speed, aim)
+		end
 	elseif prey or Setting("wander") ~= 0 then
 		if now >= (self.NextWander or 0) then
 			self.WanderYaw = self.WanderYaw + math.Rand(-WANDER_TURN, WANDER_TURN)
