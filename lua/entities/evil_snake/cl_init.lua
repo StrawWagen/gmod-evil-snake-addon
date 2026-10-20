@@ -102,12 +102,6 @@ local function Sample(snaps, rt)
 	return pose, a, b, u
 end
 
-local function Blob(pose, at)
-	local n = #pose
-	local i = math.min(math.floor(at) + 1, n - 1)
-	return EvilSnake.CatmullRom(pose[math.max(i - 1, 1)], pose[i], pose[i + 1], pose[min(i + 2, n)], at - (i - 1))
-end
-
 function ENT:Slither(now)
 	if now < (self.NextSlither or 0) then return end
 	self.NextSlither = now + SLITHER_GAP
@@ -193,7 +187,7 @@ function ENT:Think()
 		self.Gape = EvilSnake.Tongue.Gape(tongue, head, neck, EvilSnake.HeadRadius(r))
 	end
 	self.Bulges = bulges
-	if mine then EvilSnake.Inside(Blob(pose, mine.at), r * mine.size) end
+	if mine then EvilSnake.Inside(self, mine.at, mine.size) end
 	local target = held and held.ent or self:GetPrey()
 	self.Body.look = not held and EvilSnake.Tongue.Look(tongue)
 		or IsValid(target) and (target.EyePos and target:EyePos() or target:WorldSpaceCenter()) or nil

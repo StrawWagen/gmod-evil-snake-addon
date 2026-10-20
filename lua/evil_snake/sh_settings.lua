@@ -7,6 +7,8 @@ EvilSnake.SETTINGS = {
 		help = "Goes after players and swallows them. At 0 it leaves them alone" },
 	{ name = "escape_presses", default = 12, min = 0, max = 60, decimals = 0, label = "Escape presses",
 		help = "How many times a grabbed player has to hit jump to break free. At 0 there is no getting out" },
+	{ name = "belly_view", default = 0, min = 0, max = 1, label = "First person belly view",
+		help = "Swallowed players ride down inside the snake in first person, with game sound muffled, instead of watching their bulge from outside" },
 	{ name = "skip_swallow", default = 0, min = 0, max = 1, label = "Allow players to skip swallow",
 		help = "Swallowed players can hold jump for 3 seconds to respawn right away instead of riding down to the tail" },
 	{ name = "sight_range", default = 3000, min = 0, max = 10000, decimals = 0, label = "Sight range",

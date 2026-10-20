@@ -41,3 +41,11 @@ function EvilSnake.Trig(sides)
 	end
 	return t
 end
+
+function EvilSnake.Along(pose, at)
+	local n = #pose
+	if n < 2 then return pose[1] end
+	at = math.Clamp(at, 0, n - 1)
+	local i = math.min(math.floor(at) + 1, n - 1)
+	return EvilSnake.CatmullRom(pose[math.max(i - 1, 1)], pose[i], pose[i + 1], pose[math.min(i + 2, n)], at - (i - 1))
+end
