@@ -3,6 +3,7 @@ EvilSnake = EvilSnake or {}
 local Setting = EvilSnake.Setting
 
 EvilSnake.MAX_SEGMENTS = 254
+EvilSnake.SKIP_HOLD = 3
 
 function EvilSnake.GrownLength(base, mass)
 	return math.Clamp(base + Setting("growth") * mass, 1, EvilSnake.MAX_SEGMENTS)

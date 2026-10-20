@@ -69,8 +69,9 @@ local function Out(m)
 	local ply = m.ply
 	m.ply = nil
 	if IsValid(ply) and ply.EvilSnakeMeal == m then
-		ply.EvilSnakeMeal = nil
+		ply.EvilSnakeMeal, ply.EvilSnakeSkip, ply.EvilSnakeSkipReady = nil, nil, nil
 		ply:SetNW2Bool("EvilSnakeInside", false)
+		ply:SetNW2Float("EvilSnakeSkip", 0)
 	end
 end
 
@@ -98,6 +99,29 @@ end
 
 hook.Add("PlayerSpawn", "EvilSnakeInside", function(ply)
 	if ply.EvilSnakeMeal then Out(ply.EvilSnakeMeal) end
+end)
+
+local function Unskip(ply)
+	if not ply.EvilSnakeSkip then return end
+	ply.EvilSnakeSkip = nil
+	ply:SetNW2Float("EvilSnakeSkip", 0)
+end
+
+hook.Add("PlayerDeathThink", "EvilSnakeInside", function(ply)
+	if not ply.EvilSnakeMeal then return end
+	local down = ply:KeyDown(IN_JUMP)
+	if not down then ply.EvilSnakeSkipReady = true end
+	if Setting("skip_swallow") == 0 or not down or not ply.EvilSnakeSkipReady then
+		Unskip(ply)
+		return false
+	end
+	local now = CurTime()
+	if not ply.EvilSnakeSkip then
+		ply.EvilSnakeSkip = now
+		ply:SetNW2Float("EvilSnakeSkip", now)
+	end
+	if now - ply.EvilSnakeSkip >= EvilSnake.SKIP_HOLD then ply:Spawn() end
+	return false
 end)
 
 function Stomach:Digest(dt, links, link)
