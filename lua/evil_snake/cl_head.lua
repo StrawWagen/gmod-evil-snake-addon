@@ -70,7 +70,7 @@ local function Lit(nx, ny, nz)
 end
 
 local gx, gy, gz, gr, gg, gb = {}, {}, {}, {}, {}, {}
-local vr, vg, vb = {}, {}, {}
+local verts, vr, vg, vb = {}, {}, {}, {}
 local scratch = Vector()
 
 local function Set(i, x, y, z, r, g, b)
@@ -110,13 +110,18 @@ local function Shade(flip)
 			local l = Lit((ay * bz - az * by) * flip, (az * bx - ax * bz) * flip, (ax * by - ay * bx) * flip)
 			local j = (i - 1) * K + k
 			vr[j], vg[j], vb[j] = min(255, gr[j] * l), min(255, gg[j] * l), min(255, gb[j] * l)
+			local v = verts[j]
+			if not v then
+				v = Vector()
+				verts[j] = v
+			end
+			v:SetUnpacked(gx[j], gy[j], gz[j])
 		end
 	end
 end
 
 local function Vert(j)
-	scratch:SetUnpacked(gx[j], gy[j], gz[j])
-	mesh.Position(scratch)
+	mesh.Position(verts[j])
 	mesh.TexCoord(0, 0, 0)
 	mesh.Color(vr[j], vg[j], vb[j], 255)
 	mesh.AdvanceVertex()
@@ -145,6 +150,14 @@ local function Tooth(x, y, h)
 	tx[teeth], ty[teeth], th[teeth] = x, y, h
 end
 
+local function Corner(x, y, z, r, g, b)
+	scratch:SetUnpacked(x, y, z)
+	mesh.Position(scratch)
+	mesh.TexCoord(0, 0, 0)
+	mesh.Color(r, g, b, 255)
+	mesh.AdvanceVertex()
+end
+
 local function Face(ax, ay, az, bx, by, bz, cx, cy, cz, ox, oy, oz)
 	local ex, ey, ez = bx - ax, by - ay, bz - az
 	local gx2, gy2, gz2 = cx - ax, cy - ay, cz - az
@@ -154,13 +167,9 @@ local function Face(ax, ay, az, bx, by, bz, cx, cy, cz, ox, oy, oz)
 	end
 	local l = Lit(nx, ny, nz)
 	local r, g, b = min(255, BONE[1] * l), min(255, BONE[2] * l), min(255, BONE[3] * l)
-	for _, p in ipairs({ { ax, ay, az }, { bx, by, bz }, { cx, cy, cz } }) do
-		scratch:SetUnpacked(p[1], p[2], p[3])
-		mesh.Position(scratch)
-		mesh.TexCoord(0, 0, 0)
-		mesh.Color(r, g, b, 255)
-		mesh.AdvanceVertex()
-	end
+	Corner(ax, ay, az, r, g, b)
+	Corner(bx, by, bz, r, g, b)
+	Corner(cx, cy, cz, r, g, b)
 end
 
 local function Teeth(W, Lw, shift)

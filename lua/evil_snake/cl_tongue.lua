@@ -155,12 +155,10 @@ local function Coil(view, pts, root, lip, dir, width, now)
 end
 
 local px, py, pz, pf = {}, {}, {}, {}
-local vx, vy, vz, vr, vg, vb = {}, {}, {}, {}, {}, {}
-local scratch = Vector()
+local verts, vr, vg, vb = {}, {}, {}, {}
 
 local function Vert(i)
-	scratch:SetUnpacked(vx[i], vy[i], vz[i])
-	mesh.Position(scratch)
+	mesh.Position(verts[i])
 	mesh.TexCoord(0, 0, 0)
 	mesh.Color(vr[i], vg[i], vb[i], 255)
 	mesh.AdvanceVertex()
@@ -205,7 +203,12 @@ local function Tube(pts, n, r0, r1, c0, c1, light)
 			local c, s = tr.c[q], tr.s[q]
 			local dx, dy, dz = nx * c + bx * s, ny * c + by * s, nz * c + bz * s
 			local i = (j - 1) * SIDES + q + 1
-			vx[i], vy[i], vz[i] = px[j] + dx * r, py[j] + dy * r, pz[j] + dz * r
+			local v = verts[i]
+			if not v then
+				v = Vector()
+				verts[i] = v
+			end
+			v:SetUnpacked(px[j] + dx * r, py[j] + dy * r, pz[j] + dz * r)
 			local l = Bright(light, 0, dx, dy, dz)
 			vr[i], vg[i], vb[i] = min(255, cr * l), min(255, cg * l), min(255, cb * l)
 		end
