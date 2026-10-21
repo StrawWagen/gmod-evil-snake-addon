@@ -34,8 +34,9 @@ net.Receive("EvilSnakeBody", function()
 	if n > 0 then
 		local x, y, z = net.ReadFloat(), net.ReadFloat(), net.ReadFloat()
 		pts[1] = Vector(x, y, z)
+		local bits = net.ReadUInt(5)
 		for i = 2, n do
-			x, y, z = x + net.ReadInt(16) / PACK, y + net.ReadInt(16) / PACK, z + net.ReadInt(16) / PACK
+			x, y, z = x + net.ReadInt(bits) / PACK, y + net.ReadInt(bits) / PACK, z + net.ReadInt(bits) / PACK
 			pts[i] = Vector(x, y, z)
 		end
 	end

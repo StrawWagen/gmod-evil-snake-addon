@@ -192,6 +192,7 @@ function ENT:UpdateTransmitState()
 end
 
 local PACK, PACK_MAX = EvilSnake.PACK, EvilSnake.PACK_MAX
+local packed = {}
 
 local function Pack(v)
 	return math.Clamp(math.Round(v * PACK), -PACK_MAX, PACK_MAX)
@@ -207,14 +208,19 @@ function ENT:SendBody(ply)
 	net.WriteFloat(rx)
 	net.WriteFloat(ry)
 	net.WriteFloat(rz)
+	local most, k = 0, 0
 	for i = 2, #x do
 		local p = x[i]
 		local dx, dy, dz = Pack(p.x - rx), Pack(p.y - ry), Pack(p.z - rz)
-		net.WriteInt(dx, 16)
-		net.WriteInt(dy, 16)
-		net.WriteInt(dz, 16)
+		packed[k + 1], packed[k + 2], packed[k + 3] = dx, dy, dz
+		k = k + 3
+		most = math.max(most, math.abs(dx), math.abs(dy), math.abs(dz))
 		rx, ry, rz = rx + dx / PACK, ry + dy / PACK, rz + dz / PACK
 	end
+	local bits = 2
+	while 2 ^ (bits - 1) <= most do bits = bits + 1 end
+	net.WriteUInt(bits, 5)
+	for i = 1, k do net.WriteInt(packed[i], bits) end
 	net.WriteNormal(self.Chain.up)
 	local transit = self.Stomach.transit
 	net.WriteUInt(#transit, 6)
