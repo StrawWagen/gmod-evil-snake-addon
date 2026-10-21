@@ -80,6 +80,10 @@ local SMALLEST = 0.25
 local BLAST = bit.bor(DMG_BLAST, DMG_BLAST_SURFACE)
 local NUDGE = 0.15
 local REPATH = 1
+local REPATH_FAIL = 3
+local STUCK_AGAIN = 4
+local SLIP = 3
+local SQUEEZE = 3
 local LEVEL = 48
 local WAYPOINT = 32
 local STAY = 0.7
@@ -878,19 +882,24 @@ end
 
 function ENT:Goal(prey, head, now)
 	local aim = self:Lead(prey, head)
+	local route = self.Route
 	if self:Level(aim, head) and Clear(self, head, prey) then
-		self.Route = nil
+		if route then route.redo = now end
 		return aim
 	end
-	local route = self.Route
 	if not route or route.prey ~= prey or now >= route.redo then
 		local r = self:Radius()
 		local rise = self.Chain.walls > 0 and math.huge or Setting("step_height") + r
-		route = { prey = prey, pts = EvilSnake.Path.Find(head, prey:WorldSpaceCenter(), rise), i = 1, redo = now + REPATH }
-		self.Route = route
+		local known = route and route.prey == prey and route.pts or nil
+		local pts = EvilSnake.Path.Find(head, prey:WorldSpaceCenter(), rise, known)
+		if not route or route.prey ~= prey or pts ~= known then
+			route = { prey = prey, pts = pts, i = 1 }
+			self.Route = route
+		end
+		route.redo = now + (pts and #pts > 0 and REPATH or REPATH_FAIL)
 	end
 	local pts = route.pts
-	if not pts then return self:Front(prey, head, aim) end
+	if not pts or #pts == 0 then return self:Front(prey, head, aim) end
 	local near = self:Radius() * 2 + WAYPOINT
 	while route.i < #pts do
 		local at = pts[route.i]
@@ -995,6 +1004,11 @@ function ENT:Decide(now)
 		end
 		if self.Stuck >= STUCK_TIME then
 			self.Stuck = 0
+			if now < (self.StuckAgain or 0) then
+				EvilSnake.Chain.Ghost(c, SLIP)
+				EvilSnake.Chain.Squeeze(c, SQUEEZE)
+			end
+			self.StuckAgain = now + STUCK_AGAIN
 			c.climb = -c.climb
 			if IsValid(self.Prey) and self:Above(self.Prey, head) then EvilSnake.Watch(self.Prey, "climbed") end
 			self.WanderYaw = EvilSnake.Chain.Opening(c)

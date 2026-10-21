@@ -56,6 +56,13 @@ local MAX_WAVES = 2
 local MAX_SWING = 300
 local STRIDE = 1
 local MAX_SPLIT = 4
+local KNOT_SHARE = 0.5
+local KNOT_TIME = 2
+local GHOST_TIME = 3
+local FIRM_TIME = 1
+local SQUEEZE_HULL = 16
+local SQUEEZE_IN = 2
+local SQUEEZE_OUT = 0.5
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -69,6 +76,7 @@ function Chain.New(joints, filter)
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
 		mins = Vector(), maxs = Vector(), hull = {}, trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1, stretch = 1, wet = {},
 		up = Vector(0, 0, 1), walls = 0, ceilings = 0, climb = 1, letgo = 0, tick = 0,
+		ghost = 0, knot = 0, firm = 1, squeeze = 0, squeezing = 0,
 	}
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
 	return c
@@ -110,6 +118,7 @@ local function Size(c)
 	local n = #c.x
 	for i = 1, n do
 		local h = r * math.max(EvilSnake.Profile((i - 1) / math.max(n - 1, 1), body, tail), TIP)
+		if c.squeeze > 0 then h = Lerp(c.squeeze, h, math.min(h, SQUEEZE_HULL)) end
 		local grow = h - (c.hull[i] or h)
 		if grow > 0 then
 			local normal = c.cn[i]
@@ -143,6 +152,16 @@ end
 
 function Chain.LetGo(c, seconds)
 	c.letgo = math.max(c.letgo, seconds)
+	c.awake, c.still = true, 0
+end
+
+function Chain.Ghost(c, seconds)
+	c.ghost, c.knot, c.firm = math.max(c.ghost, seconds), 0, 0
+	c.awake, c.still = true, 0
+end
+
+function Chain.Squeeze(c, seconds)
+	c.squeezing = math.max(c.squeezing, seconds)
 	c.awake, c.still = true, 0
 end
 
@@ -573,6 +592,8 @@ end
 
 local function Separate(c, p, found)
 	local hull = c.hull
+	local stiff = SELF_STIFF * c.firm
+	local touching = 0
 	for k = 1, #found, 2 do
 		local i, j = found[k], found[k + 1]
 		local p1, q1, p2, q2 = p[i], p[i + 1], p[j], p[j + 1]
@@ -599,13 +620,14 @@ local function Separate(c, p, found)
 			local dist = math.sqrt(nx * nx + ny * ny + nz * nz)
 			local reach = (Lerp(s, hull[i], hull[i + 1]) + Lerp(t, hull[j], hull[j + 1])) / HULL
 			if dist < reach then
+				touching = touching + 1
 				if dist > 1e-4 then
 					nx, ny, nz = nx / dist, ny / dist, nz / dist
 				else
 					nx, ny, nz = 0, 0, 1
 				end
 				if i == 1 and nz > 0 then c.propped = true end
-				local half = (reach - dist) * 0.5 * SELF_STIFF
+				local half = (reach - dist) * 0.5 * stiff
 				local ks = half / ((1 - s) ^ 2 + s * s)
 				local kt = half / ((1 - t) ^ 2 + t * t)
 				Push(p, i, nx * ks * (1 - s), ny * ks * (1 - s), nz * ks * (1 - s))
@@ -615,6 +637,7 @@ local function Separate(c, p, found)
 			end
 		end
 	end
+	return touching
 end
 
 function Chain.Away(yaw, out)
@@ -649,6 +672,11 @@ local function Tick(c)
 	local per = DT / BASE
 	local damp, wetDamp, hover = DAMP ^ per, WET_DAMP ^ per, HOVER ^ per
 	if c.letgo > 0 then c.letgo = math.max(0, c.letgo - DT) end
+	if c.ghost > 0 then
+		c.ghost = math.max(0, c.ghost - DT)
+	elseif c.firm < 1 then
+		c.firm = math.min(1, c.firm + DT / FIRM_TIME)
+	end
 	local fly = c.fly and c.letgo <= 0
 	c.tick = c.tick + 1
 	c.gripAlong, c.gripSide = Setting("grip_along"), Setting("grip_side")
@@ -700,9 +728,10 @@ local function Tick(c)
 		c.driving = false
 	end
 	local pin = fly or c.driving and (cn[1] ~= nil or propped or swim)
-	local found = Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
+	local found = c.ghost <= 0 and Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
 	if found and #found == 0 then found = nil end
 	c.propped = false
+	local touching = 0
 	for _ = 1, Setting("solver_passes") do
 		for i = 1, n - 1 do
 			Pull(p[i], p[i + 1], link, i == 1 and pin, false)
@@ -710,7 +739,7 @@ local function Tick(c)
 		for i = 1, n - 2 do
 			Pull(p[i], p[i + 2], folds[i], i == 1 and pin, true)
 		end
-		if found then Separate(c, p, found) end
+		if found then touching = math.max(touching, Separate(c, p, found)) end
 		for i = 1, n do
 			local normal = cn[i]
 			if normal then
@@ -719,6 +748,12 @@ local function Tick(c)
 				if depth < 0 then v:SetUnpacked(v.x - normal.x * depth, v.y - normal.y * depth, v.z - normal.z * depth) end
 			end
 		end
+	end
+	if touching >= n * KNOT_SHARE then
+		c.knot = c.knot + DT
+		if c.knot >= KNOT_TIME then Chain.Ghost(c, GHOST_TIME) end
+	elseif c.knot > 0 then
+		c.knot = math.max(0, c.knot - DT)
 	end
 	local moved, slid = 0, 0
 	local was = cn[1]
@@ -753,6 +788,11 @@ local function Split(c)
 end
 
 function Chain.Update(c, dt)
+	if c.squeezing > 0 then c.squeezing = math.max(0, c.squeezing - dt) end
+	local squeeze = c.squeezing > 0 and 1 or 0
+	if c.squeeze ~= squeeze then
+		c.squeeze = math.Approach(c.squeeze, squeeze, dt * (squeeze > c.squeeze and SQUEEZE_IN or SQUEEZE_OUT))
+	end
 	Size(c)
 	Split(c)
 	if not c.awake then

@@ -39,12 +39,26 @@ local function Pop(heap)
 	return top
 end
 
-function Path.Find(from, to, rise)
+local function Portal(a, b, from)
+	local ea, eb = a:GetExtentInfo(), b:GetExtentInfo()
+	local x0, x1 = math.max(ea.lo.x, eb.lo.x), math.min(ea.hi.x, eb.hi.x)
+	local y0, y1 = math.max(ea.lo.y, eb.lo.y), math.min(ea.hi.y, eb.hi.y)
+	if x0 > x1 and y0 > y1 then
+		return LerpVector(INSET, b:GetClosestPointOnArea(from), b:GetCenter())
+	end
+	local at = Vector((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0)
+	at.z = b:GetZ(at)
+	return at
+end
+
+function Path.Find(from, to, rise, known)
 	if not navmesh.IsLoaded() then return end
 	local start, goal = Area(from), Area(to)
 	if not start or not goal then return end
 	local goalId, goalAt = goal:GetID(), goal:GetCenter()
 	local id = start:GetID()
+	local key = id .. ":" .. goalId .. ":" .. rise
+	if known and known.key == key then return known end
 	local areas, g, came, closed = { [id] = start }, { [id] = 0 }, {}, {}
 	local heap = { { start:GetCenter():Distance(goalAt), id } }
 	local found, expanded = id == goalId, 0
@@ -72,18 +86,16 @@ function Path.Find(from, to, rise)
 			end
 		end
 	end
-	if not found then return end
+	if not found then return { key = key } end
 	local chain = {}
 	local k = goalId
 	while k do
 		chain[#chain + 1] = areas[k]
 		k = came[k]
 	end
-	local pts, last = {}, from
+	local pts = { key = key }
 	for i = #chain - 1, 1, -1 do
-		local area = chain[i]
-		last = LerpVector(INSET, area:GetClosestPointOnArea(last), area:GetCenter())
-		pts[#pts + 1] = last
+		pts[#pts + 1] = Portal(chain[i + 1], chain[i], pts[#pts] or from)
 	end
 	pts[#pts + 1] = to
 	return pts
