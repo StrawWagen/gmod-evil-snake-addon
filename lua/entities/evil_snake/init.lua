@@ -97,6 +97,8 @@ local FOLLOW_INTO = 4
 local FOLLOW_WALLS = 16
 local FOLLOW_WALL_LOOK = 3000
 
+local ai_disabled = GetConVar("ai_disabled")
+
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
 	local ent = ents.Create(class)
@@ -1046,19 +1048,30 @@ function ENT:Decide(now)
 	end
 end
 
+function ENT:Switched()
+	if not ai_disabled:GetBool() then return false end
+	if self.Held then self:Release() end
+	local state = self.Tongue.state
+	if state == EvilSnake.TONGUE_OUT or state == EvilSnake.TONGUE_WRAP then self.Tongue:Drop(self) end
+	self.Prey, self.LastHead, self.Route = nil, nil, nil
+	if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
+	return true
+end
+
 function ENT:Think()
 	local now = CurTime()
 	local dt = now - self.LastThink
 	self.LastThink = now
 	local c = self.Chain
 	local alive = not self.Dead
+	local off = alive and self:Switched()
 	if alive and now >= (self.NextDecide or 0) then
 		self.NextDecide = now + DECIDE
 		self:Sharpen()
 		self:Grow()
 		self:Toughen()
 		self:Steady()
-		if self:Limp() then
+		if off or self:Limp() then
 			EvilSnake.Chain.Drive(c, EvilSnake.Chain.HeadYaw(c), 0)
 		else
 			self:Decide(now)
@@ -1077,7 +1090,7 @@ function ENT:Think()
 	local slide = math.Round(c.slide or 0)
 	if slide ~= self:GetSlide() then self:SetSlide(slide) end
 	if alive then
-		if not self:Limp() and not IsValid(EvilSnake.Leader) then self:Catch(now) end
+		if not off and not self:Limp() and not IsValid(EvilSnake.Leader) then self:Catch(now) end
 		self.Hitbox:Think(now)
 		self:Regen(now, dt)
 		EvilSnake.Smear(self, now)
