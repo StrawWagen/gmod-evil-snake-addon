@@ -51,6 +51,8 @@ local BLOCKED = 0.25
 local WET_EVERY = 3
 local CONTACT_EVERY = 2
 local ALWAYS = 6
+local MAX_WAVES = 2
+local MAX_SWING = 300
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -435,8 +437,8 @@ function Chain.Opening(c)
 end
 
 local function Steer(c)
-	local wave = Setting("wavelength")
-	local sway = Setting("sway")
+	local wave = math.max(Setting("wavelength"), c.speed / MAX_WAVES)
+	local sway = math.min(Setting("sway"), MAX_SWING * wave / (2 * math.pi * math.max(c.speed, 1)))
 	local aim, dist = c.aim, nil
 	if aim then
 		local head = c.x[1]
@@ -466,7 +468,12 @@ local function Steer(c)
 	end
 	want = math.Clamp(want, -turn, turn)
 	c.spin = c.spin + (want - c.spin) * math.min(1, (SPIN + c.speed / SPIN_SPEED) * DT)
-	c.yaw = c.yaw + c.spin * DT
+	local turned = c.spin * DT
+	if turned * diff > 0 and math.abs(turned) > math.abs(diff) then
+		turned = diff
+		c.spin = diff / DT
+	end
+	c.yaw = c.yaw + turned
 	c.phase = (c.phase + c.speed * DT / wave * math.pi * 2) % (math.pi * 2)
 	local heading = math.rad(c.yaw + c.sway * math.sin(c.phase))
 	return Vector(math.cos(heading), math.sin(heading), 0) * (c.speed * DT)
