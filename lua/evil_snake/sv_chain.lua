@@ -48,6 +48,9 @@ local DODGE_HEIGHT = 1.5
 local OPEN_LOOK = 6
 local OPENINGS = 12
 local BLOCKED = 0.25
+local WET_EVERY = 3
+local CONTACT_EVERY = 2
+local ALWAYS = 6
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -60,7 +63,7 @@ function Chain.New(joints, filter)
 	local c = {
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
 		mins = Vector(), maxs = Vector(), hull = {}, trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1, stretch = 1, wet = {},
-		up = Vector(0, 0, 1), walls = 0, ceilings = 0, climb = 1, letgo = 0,
+		up = Vector(0, 0, 1), walls = 0, ceilings = 0, climb = 1, letgo = 0, tick = 0,
 	}
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
 	return c
@@ -342,7 +345,7 @@ local function Collide(c, i, from, to, along, gravity)
 		local flat = (along - normal * along:Dot(normal)):GetNormalized()
 		local slide = flat * rest:Dot(flat)
 		local weight = gravity * DT * DT * math.max(normal.z, Hold(c, normal) * CLING_GRIP)
-		rest = Grip(slide, Setting("grip_along") * weight) + Grip(rest - slide, Setting("grip_side") * weight)
+		rest = Grip(slide, c.gripAlong * weight) + Grip(rest - slide, c.gripSide * weight)
 		to = from + rest + normal * math.max(into, math.min(0, c.cd[i] - from:Dot(normal)))
 	end
 	local tr = Hull(c, i, from, to)
@@ -365,6 +368,9 @@ local function Collide(c, i, from, to, along, gravity)
 			local stepped = Climb(c, i, from, to, final)
 			if stepped then final, climbed, hit = stepped, true, nil end
 		end
+	end
+	if not hit and not climbed and i > ALWAYS and normal and normal.z >= FLOOR and (c.tick + i) % CONTACT_EVERY ~= 0 then
+		return final, false
 	end
 	Contact(c, i, final, hit, ahead)
 	if not c.cn[i] and Steep(c, normal) and normal.z > -FLOOR then
@@ -522,6 +528,22 @@ local function Push(p, i, wx, wy, wz)
 	v:SetUnpacked(v.x + wx, v.y + wy, v.z + wz)
 end
 
+local function Pull(a, b, rest, pinned, apart)
+	local ax, ay, az = a:Unpack()
+	local bx, by, bz = b:Unpack()
+	local dx, dy, dz = bx - ax, by - ay, bz - az
+	local len = math.sqrt(dx * dx + dy * dy + dz * dz)
+	if len <= 1e-4 or apart and len >= rest then return end
+	local k = (len - rest) / len * 0.5
+	dx, dy, dz = dx * k, dy * k, dz * k
+	if pinned then
+		b:SetUnpacked(bx - dx * 2, by - dy * 2, bz - dz * 2)
+	else
+		a:SetUnpacked(ax + dx, ay + dy, az + dz)
+		b:SetUnpacked(bx - dx, by - dy, bz - dz)
+	end
+end
+
 local function Separate(c, p, found)
 	local hull = c.hull
 	for k = 1, #found, 2 do
@@ -599,9 +621,11 @@ local function Tick(c)
 	local stick = STICK * gravity * DT * DT
 	if c.letgo > 0 then c.letgo = math.max(0, c.letgo - DT) end
 	local fly = c.fly and c.letgo <= 0
+	c.tick = c.tick + 1
+	c.gripAlong, c.gripSide = Setting("grip_along"), Setting("grip_side")
 	for i = 1, n do
-		local soak = Soak(c, i, x[i])
-		wet[i] = soak
+		if i == 1 or not wet[i] or (c.tick + i) % WET_EVERY == 0 then wet[i] = Soak(c, i, x[i]) end
+		local soak = wet[i]
 		local pull = fall * (1 - BUOY * soak)
 		local hold = Hold(c, cn[i])
 		if hold > 0 then pull = pull * (1 - hold) - cn[i] * (stick * hold) end
@@ -652,36 +676,18 @@ local function Tick(c)
 	c.propped = false
 	for _ = 1, Setting("solver_passes") do
 		for i = 1, n - 1 do
-			local d = p[i + 1] - p[i]
-			local len = d:Length()
-			if len > 1e-4 then
-				local fix = d * ((len - link) / len * 0.5)
-				if i == 1 and pin then
-					p[2] = p[2] - fix * 2
-				else
-					p[i], p[i + 1] = p[i] + fix, p[i + 1] - fix
-				end
-			end
+			Pull(p[i], p[i + 1], link, i == 1 and pin, false)
 		end
 		for i = 1, n - 2 do
-			local d = p[i + 2] - p[i]
-			local len = d:Length()
-			local fold = folds[i]
-			if len < fold and len > 1e-4 then
-				local fix = d * ((len - fold) / len * 0.5)
-				if i == 1 and pin then
-					p[3] = p[3] - fix * 2
-				else
-					p[i], p[i + 2] = p[i] + fix, p[i + 2] - fix
-				end
-			end
+			Pull(p[i], p[i + 2], folds[i], i == 1 and pin, true)
 		end
 		if found then Separate(c, p, found) end
 		for i = 1, n do
 			local normal = cn[i]
 			if normal then
-				local depth = p[i]:Dot(normal) - cd[i]
-				if depth < 0 then p[i] = p[i] - normal * depth end
+				local v = p[i]
+				local depth = v:Dot(normal) - cd[i]
+				if depth < 0 then v:SetUnpacked(v.x - normal.x * depth, v.y - normal.y * depth, v.z - normal.z * depth) end
 			end
 		end
 	end
