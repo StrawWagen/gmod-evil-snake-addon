@@ -191,13 +191,30 @@ function ENT:UpdateTransmitState()
 	return TRANSMIT_ALWAYS
 end
 
+local PACK, PACK_MAX = EvilSnake.PACK, EvilSnake.PACK_MAX
+
+local function Pack(v)
+	return math.Clamp(math.Round(v * PACK), -PACK_MAX, PACK_MAX)
+end
+
 function ENT:SendBody(ply)
 	local x = self.Chain.x
 	net.Start("EvilSnakeBody")
 	net.WriteEntity(self)
 	net.WriteDouble(CurTime() - self.Chain.acc)
 	net.WriteUInt(#x, 8)
-	for _, p in ipairs(x) do net.WriteVector(p) end
+	local rx, ry, rz = x[1]:Unpack()
+	net.WriteFloat(rx)
+	net.WriteFloat(ry)
+	net.WriteFloat(rz)
+	for i = 2, #x do
+		local p = x[i]
+		local dx, dy, dz = Pack(p.x - rx), Pack(p.y - ry), Pack(p.z - rz)
+		net.WriteInt(dx, 16)
+		net.WriteInt(dy, 16)
+		net.WriteInt(dz, 16)
+		rx, ry, rz = rx + dx / PACK, ry + dy / PACK, rz + dz / PACK
+	end
 	net.WriteNormal(self.Chain.up)
 	local transit = self.Stomach.transit
 	net.WriteUInt(#transit, 6)

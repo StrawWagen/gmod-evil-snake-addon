@@ -22,6 +22,7 @@ local DRIFT = 0.05
 local FIT = 0.75
 local SHUT = { 0.9, 1.15 }
 local DEAD_DIM = 0.55
+local PACK = EvilSnake.PACK
 
 local min = math.min
 
@@ -29,7 +30,15 @@ net.Receive("EvilSnakeBody", function()
 	local ent = net.ReadEntity()
 	local t = net.ReadDouble()
 	local pts, meals = {}, {}
-	for i = 1, net.ReadUInt(8) do pts[i] = net.ReadVector() end
+	local n = net.ReadUInt(8)
+	if n > 0 then
+		local x, y, z = net.ReadFloat(), net.ReadFloat(), net.ReadFloat()
+		pts[1] = Vector(x, y, z)
+		for i = 2, n do
+			x, y, z = x + net.ReadInt(16) / PACK, y + net.ReadInt(16) / PACK, z + net.ReadInt(16) / PACK
+			pts[i] = Vector(x, y, z)
+		end
+	end
 	local up = net.ReadNormal()
 	for i = 1, net.ReadUInt(6) do meals[i] = { at = net.ReadFloat(), size = net.ReadFloat(), ply = net.ReadEntity() } end
 	local held
