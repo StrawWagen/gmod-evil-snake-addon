@@ -4,7 +4,8 @@ EvilSnake.Chain = Chain
 
 local Setting = EvilSnake.Setting
 
-local DT = 1 / 33
+local BASE = 1 / 33
+local DT = BASE
 local MAX_STEPS = 4
 local DAMP = 0.995
 local HULL = 0.85
@@ -53,6 +54,8 @@ local CONTACT_EVERY = 2
 local ALWAYS = 6
 local MAX_WAVES = 2
 local MAX_SWING = 300
+local STRIDE = 1
+local MAX_SPLIT = 4
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -149,7 +152,7 @@ function Chain.Limp(c, seconds)
 end
 
 function Chain.Kick(c, i, vel)
-	c.old[i] = c.old[i] - vel * DT
+	c.old[i] = c.old[i] - vel * (c.dt or BASE)
 	if vel.z > 0 then c.cn[i], c.cd[i] = nil, nil end
 	c.awake, c.still = true, 0
 end
@@ -643,6 +646,8 @@ local function Tick(c)
 	local fall = Vector(0, 0, -gravity * DT * DT)
 	local wet = c.wet
 	local stick = STICK * gravity * DT * DT
+	local per = DT / BASE
+	local damp, wetDamp, hover = DAMP ^ per, WET_DAMP ^ per, HOVER ^ per
 	if c.letgo > 0 then c.letgo = math.max(0, c.letgo - DT) end
 	local fly = c.fly and c.letgo <= 0
 	c.tick = c.tick + 1
@@ -654,7 +659,7 @@ local function Tick(c)
 		local hold = Hold(c, cn[i])
 		if hold > 0 then pull = pull * (1 - hold) - cn[i] * (stick * hold) end
 		if fly then pull = pull * (i == 1 and 0 or 1 - FLOAT) end
-		p[i] = x[i] + (x[i] - old[i]) * (fly and i == 1 and HOVER or soak > 0 and WET_DAMP or DAMP) + pull
+		p[i] = x[i] + (x[i] - old[i]) * (fly and i == 1 and hover or soak > 0 and wetDamp or damp) + pull
 	end
 	local want = c.want or 0
 	if c.driving and c.goal then
@@ -680,7 +685,7 @@ local function Tick(c)
 		elseif hold > 0 and not swim then
 			p[1] = x[1] + Surface(c, cn[1], step) - cn[1] * HUG + fall * (1 - hold)
 		elseif (cn[1] or propped) and not swim then
-			p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * DAMP) + fall
+			p[1] = x[1] + step + Vector(0, 0, (x[1].z - old[1].z) * damp) + fall
 		elseif swim then
 			local cap = c.speed * DT * DIVE
 			local to = x[1] + step * (1 + SURGE * math.cos(c.phase * 2))
@@ -690,7 +695,7 @@ local function Tick(c)
 		end
 		Record(c, x[1])
 		local follow = Setting("follow")
-		if follow > 0 and Follow(c, p, follow) then Reseed(c) end
+		if follow > 0 and Follow(c, p, 1 - (1 - follow) ^ (DT / BASE)) then Reseed(c) end
 	else
 		c.driving = false
 	end
@@ -731,8 +736,25 @@ local function Tick(c)
 	return moved
 end
 
+local function Split(c)
+	local split = math.Clamp(math.ceil(c.speed * BASE / (Chain.Link(c) * STRIDE)), 1, MAX_SPLIT)
+	local step = BASE / split
+	local was = c.dt or BASE
+	if step ~= was then
+		local k = step / was
+		local x, old = c.x, c.old
+		for i = 1, #x do
+			local a, b = x[i], old[i]
+			b:SetUnpacked(a.x - (a.x - b.x) * k, a.y - (a.y - b.y) * k, a.z - (a.z - b.z) * k)
+		end
+	end
+	c.dt = step
+	DT = step
+end
+
 function Chain.Update(c, dt)
 	Size(c)
+	Split(c)
 	if not c.awake then
 		c.slide = 0
 		c.nap = c.nap + dt
@@ -742,7 +764,7 @@ function Chain.Update(c, dt)
 		c.awake, c.still = true, 0
 		return true
 	end
-	c.acc = math.min(c.acc + dt, DT * MAX_STEPS)
+	c.acc = math.min(c.acc + dt, BASE * MAX_STEPS)
 	local moved = 0
 	while c.acc >= DT do
 		c.acc = c.acc - DT
