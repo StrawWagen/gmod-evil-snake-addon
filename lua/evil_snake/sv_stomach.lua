@@ -129,12 +129,14 @@ function Stomach:Digest(dt, links, link, pace)
 	return true
 end
 
+function Stomach:Settle(v)
+	if v.digested then return end
+	self.mass = (self.mass or 0) + v.mass
+	return Evil.StomachMeta.Settle(self, v)
+end
+
 function Stomach:Mass()
-	local mass = 0
-	for _, v in ipairs(self.victims) do
-		if v.digested then mass = mass + v.mass end
-	end
-	return mass
+	return self.mass or 0
 end
 
 function Stomach:Eating(links)
