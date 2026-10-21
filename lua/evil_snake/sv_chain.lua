@@ -476,42 +476,58 @@ local function CellKey(x, y, z)
 	return (x + 2048) + (y + 2048) * 4096 + (z + 2048) * 16777216
 end
 
+local grid, sizes, used, pool, found = {}, {}, {}, {}, {}
+local atx, aty, atz = {}, {}, {}
+
 local function Nearby(c, p, n, link)
 	local hull = c.hull
 	local widest = 0
 	for i = 1, n do widest = math.max(widest, hull[i]) end
 	widest = widest / HULL
 	local cell = link + widest * 2 + SELF_MARGIN
-	local grid, at = {}, {}
+	for k = #used, 1, -1 do
+		local key = used[k]
+		grid[key], sizes[key], used[k] = nil, nil, nil
+	end
+	local cells = 0
 	for s = 1, n - 1 do
 		local a, b = p[s], p[s + 1]
 		local gx = math.floor((a.x + b.x) * 0.5 / cell)
 		local gy = math.floor((a.y + b.y) * 0.5 / cell)
 		local gz = math.floor((a.z + b.z) * 0.5 / cell)
-		at[s] = { gx, gy, gz }
+		atx[s], aty[s], atz[s] = gx, gy, gz
 		local key = CellKey(gx, gy, gz)
-		local bucket = grid[key]
-		if not bucket then
-			bucket = {}
-			grid[key] = bucket
+		local size = sizes[key]
+		if not size then
+			cells = cells + 1
+			local bucket = pool[cells]
+			if not bucket then
+				bucket = {}
+				pool[cells] = bucket
+			end
+			grid[key], size = bucket, 0
+			used[#used + 1] = key
 		end
-		bucket[#bucket + 1] = s
+		size = size + 1
+		grid[key][size], sizes[key] = s, size
 	end
-	local found = {}
+	local count = 0
 	for s = 1, n - 1 do
-		local g = at[s]
+		local gx, gy, gz = atx[s], aty[s], atz[s]
 		local rs = math.max(hull[s], hull[s + 1]) / HULL
 		for dx = -1, 1 do
 			for dy = -1, 1 do
 				for dz = -1, 1 do
-					local bucket = grid[CellKey(g[1] + dx, g[2] + dy, g[3] + dz)]
+					local key = CellKey(gx + dx, gy + dy, gz + dz)
+					local bucket = grid[key]
 					if bucket then
-						for _, t in ipairs(bucket) do
+						for k = 1, sizes[key] do
+							local t = bucket[k]
 							if t > s + 1 then
 								local rt = math.max(hull[t], hull[t + 1]) / HULL
 								if (t - s) * link >= (rs + rt) * SELF_ARC then
-									found[#found + 1] = s
-									found[#found + 1] = t
+									found[count + 1], found[count + 2] = s, t
+									count = count + 2
 								end
 							end
 						end
@@ -520,6 +536,7 @@ local function Nearby(c, p, n, link)
 			end
 		end
 	end
+	for k = #found, count + 1, -1 do found[k] = nil end
 	return found
 end
 
