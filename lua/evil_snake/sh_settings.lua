@@ -5,6 +5,8 @@ EvilSnake.SETTINGS = {
 		help = "Goes after NPCs and swallows them. At 0 it leaves them alone" },
 	{ name = "hunt_players", default = 1, min = 0, max = 1, label = "Hunts players",
 		help = "Goes after players and swallows them. At 0 it leaves them alone" },
+	{ name = "npcs_fight", default = 1, min = 0, max = 1, label = "NPCs fight back",
+		help = "NPCs treat it as an enemy and attack it. At 0 they ignore it" },
 	{ name = "max_meals", default = 0, min = 0, max = 500, decimals = 0, label = "Max people eaten",
 		help = "How many it can eat in its life before it stops hunting. At 0 there is no limit" },
 	{ name = "escape_presses", default = 12, min = 0, max = 60, decimals = 0, label = "Escape presses",

@@ -140,6 +140,7 @@ function ENT:Initialize()
 	self:Toughen()
 	self:Steady()
 	self:Box()
+	EvilSnake.Expose(self)
 end
 
 function ENT:Sharpen()
@@ -789,6 +790,7 @@ function ENT:Die(dmg)
 	self.Stomach:Vacate()
 	self.Hitbox:Clear()
 	EvilSnake.Unrotor(self)
+	EvilSnake.Unexpose(self)
 	Evil.Absent(self)
 	self.Prey = nil
 	self:SetPrey(NULL)
