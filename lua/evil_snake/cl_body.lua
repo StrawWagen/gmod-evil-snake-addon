@@ -22,6 +22,7 @@ local SPAN = 1.3
 local SWELL_IN = 1
 local NECK = 3
 local SCALE_MIN = 0.25
+local BUDGET = 6000
 local TAU = math.pi * 2
 local UP = Vector(0, 0, 1)
 
@@ -247,6 +248,9 @@ function Body.Draw(body, pts, bulges, R, link, mouth, up)
 	local near = math.Clamp(math.ceil(link / (R * SPACING)), 2, SUB)
 	local sub = math.Round(Lerp(detail, near, 1))
 	local sides = math.Round(Lerp(detail, SIDES[1], SIDES[2]))
+	local links = #pts - 1
+	sub = max(1, min(sub, math.floor(BUDGET / ((sides + 1) * links))))
+	sides = max(SIDES[2], min(sides, math.floor(BUDGET / (links * sub + BOWL + 1)) - 1))
 	Rings(pts, bulges or {}, R, link, mouth, sub, up)
 	local tr = EvilSnake.Trig(sides)
 	local light = body.light
