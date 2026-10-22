@@ -43,6 +43,7 @@ function EvilSnake.Smear(snake, now)
 	local c = snake.Chain
 	local coat = snake.Coat or {}
 	snake.Coat = coat
+	if not next(EvilFungus.Colonies) and not next(coat) then return end
 	local room = EvilFungus.Room()
 	for i = 1, #c.x, STRIDE do
 		local pos, normal = Ground(c, i)
