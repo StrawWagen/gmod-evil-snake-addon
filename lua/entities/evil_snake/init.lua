@@ -200,7 +200,7 @@ end
 function ENT:Bounds()
 	local r = self:Radius()
 	local mins, maxs = Vector(-r, -r, -r), Vector(r, r, r)
-	if not self.Grip and math.abs(r - (self.Handle or 0)) > HANDLE_RESIZE then
+	if not self.Gripped and math.abs(r - (self.Handle or 0)) > HANDLE_RESIZE then
 		self.Handle = r
 		self:PhysicsInitBox(mins, maxs, "flesh")
 		self:SetMoveType(MOVETYPE_VPHYSICS)
@@ -225,7 +225,7 @@ function ENT:Anchor()
 end
 
 function ENT:Grip(ply)
-	local grip = self.Grip
+	local grip = self.Gripped
 	if not grip then
 		local x = self.Chain.x
 		local at = self:GetPos()
@@ -235,7 +235,7 @@ function ENT:Grip(ply)
 			if d < bestDist then best, bestDist = i, d end
 		end
 		grip = { by = {}, i = best, off = x[best] - at }
-		self.Grip = grip
+		self.Gripped = grip
 		self.Prey, self.LastHead, self.Route = nil, nil, nil
 		if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
 	end
@@ -248,11 +248,11 @@ function ENT:Grip(ply)
 end
 
 function ENT:Ungrip(ply)
-	local grip = self.Grip
+	local grip = self.Gripped
 	if not grip then return end
 	if ply then grip.by[ply] = nil end
 	if next(grip.by) then return end
-	self.Grip = nil
+	self.Gripped = nil
 	self.Astray = true
 	local c = self.Chain
 	EvilSnake.Chain.Unpin(c)
@@ -260,7 +260,7 @@ function ENT:Ungrip(ply)
 end
 
 function ENT:Handled(dt)
-	local grip = self.Grip
+	local grip = self.Gripped
 	if not grip then return false end
 	for ply in pairs(grip.by) do
 		local wep = IsValid(ply) and ply:Alive() and ply:KeyDown(IN_ATTACK) and ply:GetActiveWeapon()
@@ -685,7 +685,7 @@ function ENT:Steady()
 end
 
 function ENT:Limp()
-	return self.Grip ~= nil or CurTime() < (self.LimpUntil or 0)
+	return self.Gripped ~= nil or CurTime() < (self.LimpUntil or 0)
 end
 
 local function Struck(dmg, fallback)
@@ -1193,7 +1193,7 @@ function ENT:Think()
 		self.Dirty = true
 		if alive then self:Box() end
 	end
-	if not self.Grip and (stepped or self.Astray or self:Loose()) then self:Anchor() end
+	if not self.Gripped and (stepped or self.Astray or self:Loose()) then self:Anchor() end
 	self.Astray = nil
 	self:Splash(now)
 	self:Douse()
@@ -1239,7 +1239,7 @@ hook.Add("StartCommand", "EvilSnakeGrip", function(ply, cmd)
 	local range = physgun_range and physgun_range:GetFloat() or PHYSGUN_RANGE
 	local tr = util.TraceLine({ start = eye, endpos = eye + cmd:GetViewAngles():Forward() * range, mask = MASK_SHOT, filter = ply })
 	local snake = Evil.HitboxOwner(tr.Entity)
-	if not snake or not snakes[snake] or snake.Grip then return end
+	if not snake or not snakes[snake] or snake.Gripped then return end
 	snake.Astray = true
 	snake:SetPos(tr.HitPos)
 end)
