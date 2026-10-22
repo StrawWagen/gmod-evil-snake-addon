@@ -84,6 +84,7 @@ function Chain.New(joints, filter)
 		up = Vector(0, 0, 1), walls = 0, ceilings = 0, climb = 1, letgo = 0, tick = 0,
 		ghost = 0, knot = 0, firm = 1, squeeze = 0, squeezing = 0,
 	}
+	c.trace = { mins = c.mins, maxs = c.maxs, mask = MASK_SOLID, filter = filter }
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
 	return c
 end
@@ -115,7 +116,9 @@ local function Hull(c, i, from, to)
 	local r = c.hull[i]
 	c.mins:SetUnpacked(-r, -r, -r)
 	c.maxs:SetUnpacked(r, r, r)
-	return util.TraceHull({ start = from, endpos = to, mins = c.mins, maxs = c.maxs, mask = MASK_SOLID, filter = c.filter })
+	local q = c.trace
+	q.start, q.endpos = from, to
+	return util.TraceHull(q)
 end
 
 local function Size(c)
