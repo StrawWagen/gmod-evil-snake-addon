@@ -179,6 +179,18 @@ function Chain.Limp(c, seconds)
 	c.speed, c.want, c.aim, c.driving = 0, 0, nil, false
 end
 
+function Chain.Pin(c, i, pos)
+	c.pinned = i
+	c.pinnedAt = c.pinnedAt or Vector()
+	c.pinnedAt:Set(pos)
+	c.awake, c.still = true, 0
+end
+
+function Chain.Unpin(c)
+	c.pinned = nil
+	c.awake, c.still = true, 0
+end
+
 function Chain.Kick(c, i, vel)
 	c.old[i] = c.old[i] - vel * (c.dt or BASE)
 	if vel.z > 0 then c.cn[i], c.cd[i] = nil, nil end
@@ -595,7 +607,7 @@ local function Push(p, i, wx, wy, wz)
 	v:SetUnpacked(v.x + wx, v.y + wy, v.z + wz)
 end
 
-local function Pull(a, b, rest, pinned, apart)
+local function Pull(a, b, rest, pinned, apart, held)
 	local ax, ay, az = a:Unpack()
 	local bx, by, bz = b:Unpack()
 	local dx, dy, dz = bx - ax, by - ay, bz - az
@@ -605,6 +617,8 @@ local function Pull(a, b, rest, pinned, apart)
 	dx, dy, dz = dx * k, dy * k, dz * k
 	if pinned then
 		b:SetUnpacked(bx - dx * 2, by - dy * 2, bz - dz * 2)
+	elseif held then
+		a:SetUnpacked(ax + dx * 2, ay + dy * 2, az + dz * 2)
 	else
 		a:SetUnpacked(ax + dx, ay + dy, az + dz)
 		b:SetUnpacked(bx - dx, by - dy, bz - dz)
@@ -748,17 +762,19 @@ local function Tick(c)
 	else
 		c.driving = false
 	end
-	local pin = fly or c.driving and (cn[1] ~= nil or propped or swim)
+	local g = c.pinned and math.min(c.pinned, n)
+	if g then p[g]:Set(c.pinnedAt) end
+	local pin = not g and (fly or c.driving and (cn[1] ~= nil or propped or swim))
 	local found = c.ghost <= 0 and Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
 	if found and #found == 0 then found = nil end
 	c.propped = false
 	local touching = 0
 	for _ = 1, Setting("solver_passes") do
 		for i = 1, n - 1 do
-			Pull(p[i], p[i + 1], link, i == 1 and pin, false)
+			Pull(p[i], p[i + 1], link, i == 1 and pin or i == g, false, i + 1 == g)
 		end
 		for i = 1, n - 2 do
-			Pull(p[i], p[i + 2], folds[i], i == 1 and pin, true)
+			Pull(p[i], p[i + 2], folds[i], i == 1 and pin or i == g, true, i + 2 == g)
 		end
 		if found then touching = math.max(touching, Separate(c, p, found)) end
 		for i = 1, n do
@@ -769,6 +785,7 @@ local function Tick(c)
 				if depth < 0 then v:SetUnpacked(v.x - normal.x * depth, v.y - normal.y * depth, v.z - normal.z * depth) end
 			end
 		end
+		if g then p[g]:Set(c.pinnedAt) end
 	end
 	if touching >= n * KNOT_SHARE then
 		c.knot = c.knot + DT
@@ -779,8 +796,14 @@ local function Tick(c)
 	local moved, slid = 0, 0
 	local was = cn[1]
 	for i = 1, n do
-		local along = (p[math.min(i + 1, n)] - p[math.max(i - 1, 1)]):GetNormalized()
-		local to, climbed, snapped = Collide(c, i, x[i], p[i], along, gravity)
+		local to, climbed, snapped
+		if i == g then
+			to = Vector(c.pinnedAt)
+			cn[i], cd[i] = nil, nil
+		else
+			local along = (p[math.min(i + 1, n)] - p[math.max(i - 1, 1)]):GetNormalized()
+			to, climbed, snapped = Collide(c, i, x[i], p[i], along, gravity)
+		end
 		old[i], x[i] = snapped and Vector(to) or climbed and Vector(x[i].x, x[i].y, to.z) or x[i], to
 		moved = math.max(moved, to:DistToSqr(old[i]))
 		if cn[i] then slid = slid + math.sqrt((to.x - old[i].x) ^ 2 + (to.y - old[i].y) ^ 2) end

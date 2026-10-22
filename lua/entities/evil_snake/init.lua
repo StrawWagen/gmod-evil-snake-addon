@@ -102,7 +102,15 @@ local FOLLOW_INTO = 4
 local FOLLOW_WALLS = 16
 local FOLLOW_WALL_LOOK = 3000
 
+local HANDLE_RESIZE = 1
+local GRIP_SNAP = 8
+local GRIP_LIMP = 0.5
+local DROP_LIMP = 1
+local PHYSGUN_RANGE = 4096
+
 local ai_disabled = GetConVar("ai_disabled")
+local physgun_range = GetConVar("physgun_maxrange")
+local snakes = {}
 
 function ENT:SpawnFunction(ply, tr, class)
 	if not tr.Hit then return end
@@ -116,8 +124,6 @@ end
 
 function ENT:Initialize()
 	self:SetModel("models/hunter/blocks/cube025x025x025.mdl")
-	self:SetMoveType(MOVETYPE_NONE)
-	self:SetSolid(SOLID_BBOX)
 	self:SetCollisionGroup(COLLISION_GROUP_DEBRIS)
 	self:DrawShadow(false)
 	self:SetGirth(1)
@@ -146,6 +152,7 @@ function ENT:Initialize()
 	self:Steady()
 	self:Box()
 	EvilSnake.Expose(self)
+	snakes[self] = true
 end
 
 function ENT:Sharpen()
@@ -192,7 +199,82 @@ end
 
 function ENT:Bounds()
 	local r = self:Radius()
-	self:SetCollisionBounds(Vector(-r, -r, -r), Vector(r, r, r))
+	local mins, maxs = Vector(-r, -r, -r), Vector(r, r, r)
+	if not self.Grip and math.abs(r - (self.Handle or 0)) > HANDLE_RESIZE then
+		self.Handle = r
+		self:PhysicsInitBox(mins, maxs, "flesh")
+		self:SetMoveType(MOVETYPE_VPHYSICS)
+		self:SetSolid(SOLID_BBOX)
+		local phys = self:GetPhysicsObject()
+		if IsValid(phys) then phys:EnableMotion(false) end
+	end
+	self:SetCollisionBounds(mins, maxs)
+end
+
+function ENT:Loose()
+	local phys = self:GetPhysicsObject()
+	return IsValid(phys) and phys:IsMotionEnabled()
+end
+
+function ENT:Anchor()
+	if self:Loose() then
+		self:GetPhysicsObject():EnableMotion(false)
+		self:SetAngles(angle_zero)
+	end
+	self:SetPos(self.Chain.x[1])
+end
+
+function ENT:Grip(ply)
+	local grip = self.Grip
+	if not grip then
+		local x = self.Chain.x
+		local at = self:GetPos()
+		local best, bestDist = 1, math.huge
+		for i, p in ipairs(x) do
+			local d = p:DistToSqr(at)
+			if d < bestDist then best, bestDist = i, d end
+		end
+		grip = { by = {}, i = best, off = x[best] - at }
+		self.Grip = grip
+		self.Prey, self.LastHead, self.Route = nil, nil, nil
+		if IsValid(self:GetPrey()) then self:SetPrey(NULL) end
+	end
+	grip.by[ply] = true
+	local phys = self:GetPhysicsObject()
+	if IsValid(phys) then
+		phys:EnableMotion(true)
+		phys:Wake()
+	end
+end
+
+function ENT:Ungrip(ply)
+	local grip = self.Grip
+	if not grip then return end
+	if ply then grip.by[ply] = nil end
+	if next(grip.by) then return end
+	self.Grip = nil
+	self.Astray = true
+	local c = self.Chain
+	EvilSnake.Chain.Unpin(c)
+	EvilSnake.Chain.Limp(c, DROP_LIMP)
+end
+
+function ENT:Handled(dt)
+	local grip = self.Grip
+	if not grip then return false end
+	for ply in pairs(grip.by) do
+		local wep = IsValid(ply) and ply:Alive() and ply:KeyDown(IN_ATTACK) and ply:GetActiveWeapon()
+		if not IsValid(wep) or wep:GetClass() ~= "weapon_physgun" then grip.by[ply] = nil end
+	end
+	if not next(grip.by) then
+		self:Ungrip()
+		return false
+	end
+	local c = self.Chain
+	grip.off:Mul(math.exp(-GRIP_SNAP * dt))
+	EvilSnake.Chain.Pin(c, math.min(grip.i, #c.x), self:GetPos() + grip.off)
+	EvilSnake.Chain.Limp(c, GRIP_LIMP)
+	return true
 end
 
 function ENT:UpdateTransmitState()
@@ -571,6 +653,7 @@ function ENT:Hold(now)
 end
 
 function ENT:OnRemove()
+	snakes[self] = nil
 	EvilSnake.Unrotor(self)
 	self.Tongue:Drop(self)
 	self:Release()
@@ -602,7 +685,7 @@ function ENT:Steady()
 end
 
 function ENT:Limp()
-	return CurTime() < (self.LimpUntil or 0)
+	return self.Grip ~= nil or CurTime() < (self.LimpUntil or 0)
 end
 
 local function Struck(dmg, fallback)
@@ -1089,6 +1172,7 @@ function ENT:Think()
 	local c = self.Chain
 	local alive = not self.Dead
 	local off = alive and self:Switched()
+	self:Handled(dt)
 	if alive and now >= (self.NextDecide or 0) then
 		self.NextDecide = now + DECIDE
 		self:Sharpen()
@@ -1104,11 +1188,13 @@ function ENT:Think()
 		self:Grow()
 	end
 	EvilSnake.Chain.Fit(c, self:GetLength())
-	if EvilSnake.Chain.Update(c, dt) then
-		self:SetPos(c.x[1])
+	local stepped = EvilSnake.Chain.Update(c, dt)
+	if stepped then
 		self.Dirty = true
 		if alive then self:Box() end
 	end
+	if not self.Grip and (stepped or self.Astray or self:Loose()) then self:Anchor() end
+	self.Astray = nil
 	self:Splash(now)
 	self:Douse()
 	local slide = math.Round(c.slide or 0)
@@ -1143,4 +1229,29 @@ net.Receive("EvilSnakeBody", function(_, ply)
 	if now < (asked[ent] or 0) then return end
 	asked[ent] = now + ASK_GAP
 	ent:SendBody(ply)
+end)
+
+hook.Add("StartCommand", "EvilSnakeGrip", function(ply, cmd)
+	if not next(snakes) or not cmd:KeyDown(IN_ATTACK) then return end
+	local wep = ply:GetActiveWeapon()
+	if not IsValid(wep) or wep:GetClass() ~= "weapon_physgun" then return end
+	local eye = ply:EyePos()
+	local range = physgun_range and physgun_range:GetFloat() or PHYSGUN_RANGE
+	local tr = util.TraceLine({ start = eye, endpos = eye + cmd:GetViewAngles():Forward() * range, mask = MASK_SHOT, filter = ply })
+	local snake = Evil.HitboxOwner(tr.Entity)
+	if not snake or not snakes[snake] or snake.Grip then return end
+	snake.Astray = true
+	snake:SetPos(tr.HitPos)
+end)
+
+hook.Add("OnPhysgunPickup", "EvilSnakeGrip", function(ply, ent)
+	if snakes[ent] then ent:Grip(ply) end
+end)
+
+hook.Add("PhysgunDrop", "EvilSnakeGrip", function(ply, ent)
+	if snakes[ent] then ent:Ungrip(ply) end
+end)
+
+hook.Add("OnPhysgunFreeze", "EvilSnakeGrip", function(_, _, ent, ply)
+	if snakes[ent] then ent:Ungrip(ply) end
 end)
