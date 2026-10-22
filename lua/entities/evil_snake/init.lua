@@ -8,6 +8,8 @@ util.AddNetworkString("EvilSnakeBody")
 local Setting = EvilSnake.Setting
 
 local ASK_GAP = 0.2
+local FAR_EVERY = 5
+local PVS_STEP = 8
 local DECIDE = 0.2
 local LOSE = 1.25
 local STUCK = 0.3
@@ -288,7 +290,7 @@ local function Pack(v)
 	return math.Clamp(math.Round(v * PACK), -PACK_MAX, PACK_MAX)
 end
 
-function ENT:SendBody(ply)
+function ENT:SendBody(to)
 	local x = self.Chain.x
 	net.Start("EvilSnakeBody")
 	net.WriteEntity(self)
@@ -329,7 +331,22 @@ function ENT:SendBody(ply)
 		net.WriteFloat(held.size)
 	end
 	self.Tongue:Write()
-	if ply then net.Send(ply) else net.Broadcast() end
+	if to then net.Send(to) else net.Broadcast() end
+end
+
+function ENT:Recipients()
+	self.Sends = (self.Sends or 0) + 1
+	if self.Sends % FAR_EVERY == 0 then return end
+	local rf = RecipientFilter()
+	local x = self.Chain.x
+	for i = 1, #x, PVS_STEP do rf:AddPVS(x[i]) end
+	rf:AddPVS(x[#x])
+	for _, m in ipairs(self.Stomach.transit) do
+		if IsValid(m.ply) then rf:AddPlayer(m.ply) end
+	end
+	local held = self.Held
+	if held and IsValid(held.ent) and held.ent:IsPlayer() then rf:AddPlayer(held.ent) end
+	return rf
 end
 
 local function Unseen(ply)
@@ -1211,10 +1228,12 @@ function ENT:Think()
 		self:Hold(now)
 		if self.Stomach:Digest(dt, #c.x - 1, EvilSnake.Chain.Link(c), self.Sharp.digest) then self.Dirty = true end
 	end
-	if self.Dirty and now >= (self.NextSend or 0) then
+	if (self.Dirty or self.Behind) and now >= (self.NextSend or 0) then
+		local to = self.Dirty and self:Recipients()
 		self.Dirty = false
+		self.Behind = to and true or nil
 		self.NextSend = now + EvilSnake.SEND
-		self:SendBody()
+		if not to or to:GetCount() > 0 then self:SendBody(to) end
 	end
 	self:NextThink(now)
 	return true
