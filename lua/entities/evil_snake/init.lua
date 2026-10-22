@@ -34,6 +34,7 @@ local FAST = 4
 local ESCAPE_PUSH = 350
 local ESCAPE_UP = 220
 local ESCAPE_GRACE = 4
+local LANDING = 6
 local SPLASH = { "ambient/water/water_splash1.wav", "ambient/water/water_splash2.wav", "ambient/water/water_splash3.wav" }
 local SPLASH_GAP = 0.5
 local SPLASH_LEVEL = 75
@@ -506,8 +507,16 @@ function ENT:Fling(ent)
 		away.z = 0
 	end
 	away:Normalize()
+	ent.EvilSnakeLanding = CurTime() + LANDING
 	ent:SetVelocity(away * ESCAPE_PUSH + Vector(0, 0, ESCAPE_UP))
 end
+
+hook.Add("OnPlayerHitGround", "EvilSnakeLanding", function(ply)
+	local t = ply.EvilSnakeLanding
+	if not t then return end
+	ply.EvilSnakeLanding = nil
+	if CurTime() <= t then return true end
+end)
 
 local function Free(ent, pos, snake)
 	return not util.TraceHull({
@@ -529,6 +538,7 @@ function ENT:Release()
 	local mouth = self:Mouth()
 	ent:SetPos(Free(ent, mouth, self) and mouth or held.from)
 	ent:SetAngles(Angle(0, ent:GetAngles().y, 0))
+	ent.EvilSnakeLanding = CurTime() + LANDING
 	hook.Run("EvilSnakeReleased", self, ent)
 end
 
