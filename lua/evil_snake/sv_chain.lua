@@ -851,10 +851,11 @@ function Chain.Update(c, dt)
 		return true
 	end
 	c.acc = math.min(c.acc + dt, BASE * MAX_STEPS)
-	local moved = 0
+	local moved, stepped = 0, false
 	while c.acc >= DT do
 		c.acc = c.acc - DT
 		moved = math.max(moved, Tick(c))
+		stepped = true
 	end
 	if moved > REST * REST or c.speed > 0 then
 		c.still = 0
@@ -862,5 +863,5 @@ function Chain.Update(c, dt)
 		c.still = c.still + dt
 		if c.still > SETTLE then c.awake = false end
 	end
-	return true
+	return stepped
 end
