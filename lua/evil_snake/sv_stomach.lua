@@ -100,8 +100,9 @@ hook.Add("PlayerDeathThink", "EvilSnakeInside", function(ply)
 	if not ply.EvilSnakeMeal then return end
 	local now = CurTime()
 	if ply.EvilSnakeDone then
-		if now >= ply.EvilSnakeDone then ply:Spawn() end
-		return false
+		if now < ply.EvilSnakeDone then return false end
+		Leave(ply)
+		return
 	end
 	local down = ply:KeyDown(IN_JUMP)
 	if not down then ply.EvilSnakeSkipReady = true end
@@ -113,8 +114,8 @@ hook.Add("PlayerDeathThink", "EvilSnakeInside", function(ply)
 		ply.EvilSnakeSkip = now
 		ply:SetNW2Float("EvilSnakeSkip", now)
 	end
-	if now - ply.EvilSnakeSkip >= EvilSnake.SKIP_HOLD then ply:Spawn() end
-	return false
+	if now - ply.EvilSnakeSkip < EvilSnake.SKIP_HOLD then return false end
+	Leave(ply)
 end)
 
 function Stomach:Digest(dt, links, link, pace)
