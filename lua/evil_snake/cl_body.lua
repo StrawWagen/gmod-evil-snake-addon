@@ -236,14 +236,9 @@ local function Strip(a, b, sides)
 	end
 end
 
-function Body.Draw(body, pts, bulges, R, link, mouth, up)
-	up = up or UP
-	if #pts < 2 then return end
-	Relight(body, pts)
-	EvilSnake.Gaze()
-	cr, cg, cb = EvilSnake.Color()
-	local dim = body.dim
-	if dim then cr, cg, cb = cr * dim, cg * dim, cb * dim end
+local built, builtFrame, builtSides
+
+local function Build(body, pts, bulges, R, link, mouth, up)
 	local detail = Detail(pts, R)
 	local near = math.Clamp(math.ceil(link / (R * SPACING)), 2, SUB)
 	local sub = math.Round(Lerp(detail, near, 1))
@@ -287,7 +282,22 @@ function Body.Draw(body, pts, bulges, R, link, mouth, up)
 			vu[i], vv[i] = q / sides, along
 		end
 	end
+	return sides
+end
 
+function Body.Draw(body, pts, bulges, R, link, mouth, up)
+	up = up or UP
+	if #pts < 2 then return end
+	Relight(body, pts)
+	EvilSnake.Gaze()
+	cr, cg, cb = EvilSnake.Color()
+	local dim = body.dim
+	if dim then cr, cg, cb = cr * dim, cg * dim, cb * dim end
+	local frame = FrameNumber()
+	if built ~= body or builtFrame ~= frame then
+		built, builtFrame, builtSides = body, frame, Build(body, pts, bulges, R, link, mouth, up)
+	end
+	local sides = builtSides
 	render.SetMaterial(EvilSnake.Material)
 	Strip(1, BOWL, sides)
 	render.SetMaterial(EvilSnake.SkinMaterial)
