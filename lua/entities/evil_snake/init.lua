@@ -1014,10 +1014,8 @@ function ENT:Decide(now)
 		end
 		if self.Stuck >= STUCK_TIME then
 			self.Stuck = 0
-			if now < (self.StuckAgain or 0) then
-				EvilSnake.Chain.Ghost(c, SLIP)
-				EvilSnake.Chain.Squeeze(c, SQUEEZE)
-			end
+			EvilSnake.Chain.Squeeze(c, SQUEEZE)
+			if now < (self.StuckAgain or 0) then EvilSnake.Chain.Ghost(c, SLIP) end
 			self.StuckAgain = now + STUCK_AGAIN
 			c.climb = -c.climb
 			if IsValid(self.Prey) and self:Above(self.Prey, head) then EvilSnake.Watch(self.Prey, "climbed") end

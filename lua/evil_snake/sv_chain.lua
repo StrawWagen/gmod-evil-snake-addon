@@ -63,6 +63,12 @@ local FIRM_TIME = 1
 local SQUEEZE_HULL = 16
 local SQUEEZE_IN = 2
 local SQUEEZE_OUT = 0.5
+local TIGHT_EVERY = 0.25
+local TIGHT_HOLD = 1.5
+local TIGHT_CHECKS = 16
+local TIGHT_LOOK = 2
+local TIGHT_GAIN = 0.25
+local TIGHT_MASK = bit.band(MASK_SOLID, bit.bnot(CONTENTS_MONSTER))
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -787,7 +793,43 @@ local function Split(c)
 	DT = step
 end
 
+local function Fits(c, h, from, to)
+	c.mins:SetUnpacked(-h, -h, -h)
+	c.maxs:SetUnpacked(h, h, h)
+	return util.TraceHull({ start = from, endpos = to, mins = c.mins, maxs = c.maxs, mask = TIGHT_MASK, filter = c.filter })
+end
+
+local function Tight(c)
+	local r = Setting("radius") * c.girth * HULL
+	if r <= SQUEEZE_HULL then return false end
+	local x, cn, hull = c.x, c.cn, c.hull
+	local n = #x
+	local body, tail = EvilSnake.Shape()
+	local stride = math.max(1, math.floor(n / TIGHT_CHECKS))
+	for i = 1, n, stride do
+		local h = r * math.max(EvilSnake.Profile((i - 1) / math.max(n - 1, 1), body, tail), TIP)
+		if h > SQUEEZE_HULL then
+			local at = cn[i] and x[i] + cn[i] * (h - hull[i]) or x[i]
+			if Fits(c, h, at, at).StartSolid then return true end
+		end
+	end
+	if not (c.driving and c.speed > 0 and cn[1] and cn[1].z >= FLOOR) then return false end
+	local ahead = Angle(0, c.yaw, 0):Forward() * (Chain.Link(c) * TIGHT_LOOK)
+	local head = x[1] + cn[1] * (r - hull[1])
+	local full = Fits(c, r, head, head + ahead)
+	if not full.Hit or full.StartSolid then return false end
+	local thin = Fits(c, SQUEEZE_HULL, x[1], x[1] + ahead)
+	return not thin.StartSolid and thin.Fraction > full.Fraction + TIGHT_GAIN
+end
+
 function Chain.Update(c, dt)
+	if c.awake then
+		c.tight = (c.tight or 0) - dt
+		if c.tight <= 0 then
+			c.tight = TIGHT_EVERY
+			if Tight(c) then Chain.Squeeze(c, TIGHT_HOLD) end
+		end
+	end
 	if c.squeezing > 0 then c.squeezing = math.max(0, c.squeezing - dt) end
 	local squeeze = c.squeezing > 0 and 1 or 0
 	if c.squeeze ~= squeeze then
