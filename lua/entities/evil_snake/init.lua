@@ -734,7 +734,7 @@ function ENT:Knock(dmg, amount)
 		local force = dmg:GetDamageForce()
 		local f = force:Length()
 		peak = math.min(f / KG * give, MAX_FLING)
-		if peak < MIN_PUSH then return end
+		if peak < MIN_PUSH or not (f < math.huge) then return end
 		local dir = force / f
 		if peak >= LIMP_SPEED then
 			dir.z = math.max(dir.z, 0) + LIFT
