@@ -4,6 +4,7 @@ EvilSnake.SEND = 1 / 15
 EvilSnake.SPINUP = 1.5
 EvilSnake.PACK = 16
 EvilSnake.PACK_MAX = 32767
+EvilSnake.HULL = 0.85
 
 local STEP = 24
 local DROP = 120
@@ -75,7 +76,7 @@ function EvilSnake.HeadRadius(R)
 end
 
 function EvilSnake.HeadDrop(R)
-	return R - EvilSnake.HeadRadius(R)
+	return (R - EvilSnake.HeadRadius(R)) * EvilSnake.HULL
 end
 
 function EvilSnake.HeadPoints(head, neck, R, up)
