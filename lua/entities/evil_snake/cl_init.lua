@@ -102,7 +102,7 @@ local function Fit(ent, r)
 	return math.max(hi.x - lo.x, hi.y - lo.y) * 0.5 * FIT
 end
 
-local function Sample(snaps, rt)
+local function Sample(snaps, rt, pose)
 	local n = #snaps
 	if rt <= snaps[1].t then return snaps[1].pts, snaps[1], snaps[1], 0 end
 	if rt >= snaps[n].t then return snaps[n].pts, snaps[n], snaps[n], 0 end
@@ -116,12 +116,23 @@ local function Sample(snaps, rt)
 	local h00, h01 = 2 * u3 - 3 * u2 + 1, 3 * u2 - 2 * u3
 	local h10, h11 = (u3 - 2 * u2 + u) * h / (b.t - p.t), (u3 - u2) * h / (q.t - a.t)
 	local A, B, P, Q = a.pts, b.pts, p.pts, q.pts
-	local na, np, nq = #A, #P, #Q
-	local pose = {}
-	for i = 1, #B do
-		local pa, pb = A[min(i, na)], B[i]
-		pose[i] = pa * h00 + pb * h01 + (pb - P[min(i, np)]) * h10 + (Q[min(i, nq)] - pa) * h11
+	local na, nb, np, nq = #A, #B, #P, #Q
+	for i = 1, nb do
+		local ax, ay, az = A[min(i, na)]:Unpack()
+		local bx, by, bz = B[i]:Unpack()
+		local px, py, pz = P[min(i, np)]:Unpack()
+		local qx, qy, qz = Q[min(i, nq)]:Unpack()
+		local v = pose[i]
+		if not v then
+			v = Vector()
+			pose[i] = v
+		end
+		v:SetUnpacked(
+			ax * h00 + bx * h01 + (bx - px) * h10 + (qx - ax) * h11,
+			ay * h00 + by * h01 + (by - py) * h10 + (qy - ay) * h11,
+			az * h00 + bz * h01 + (bz - pz) * h10 + (qz - az) * h11)
 	end
+	for i = #pose, nb + 1, -1 do pose[i] = nil end
 	return pose, a, b, u
 end
 
@@ -182,7 +193,8 @@ function ENT:Think()
 		return
 	end
 	local rt = math.min(UnPredictedCurTime() - self.Offset - DELAY, snaps[#snaps].t)
-	local pose, snap, later, u = Sample(snaps, rt)
+	self.Posing = self.Posing or {}
+	local pose, snap, later, u = Sample(snaps, rt, self.Posing)
 	self.Pose = pose
 	local up = LerpVector(u, snap.up, later.up)
 	up:Normalize()
