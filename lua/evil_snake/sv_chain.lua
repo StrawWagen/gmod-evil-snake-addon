@@ -517,6 +517,7 @@ end
 
 local grid, sizes, used, pool, found = {}, {}, {}, {}, {}
 local atx, aty, atz = {}, {}, {}
+local midx, midy, midz, half = {}, {}, {}, {}
 
 local function Nearby(c, p, n, link)
 	local hull = c.hull
@@ -530,10 +531,15 @@ local function Nearby(c, p, n, link)
 	end
 	local cells = 0
 	for s = 1, n - 1 do
-		local a, b = p[s], p[s + 1]
-		local gx = math.floor((a.x + b.x) * 0.5 / cell)
-		local gy = math.floor((a.y + b.y) * 0.5 / cell)
-		local gz = math.floor((a.z + b.z) * 0.5 / cell)
+		local ax, ay, az = p[s]:Unpack()
+		local bx, by, bz = p[s + 1]:Unpack()
+		local mx, my, mz = (ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5
+		local ex, ey, ez = bx - ax, by - ay, bz - az
+		midx[s], midy[s], midz[s] = mx, my, mz
+		half[s] = math.sqrt(ex * ex + ey * ey + ez * ez) * 0.5
+		local gx = math.floor(mx / cell)
+		local gy = math.floor(my / cell)
+		local gz = math.floor(mz / cell)
 		atx[s], aty[s], atz[s] = gx, gy, gz
 		local key = CellKey(gx, gy, gz)
 		local size = sizes[key]
@@ -553,6 +559,7 @@ local function Nearby(c, p, n, link)
 	local count = 0
 	for s = 1, n - 1 do
 		local gx, gy, gz = atx[s], aty[s], atz[s]
+		local mx, my, mz, hs = midx[s], midy[s], midz[s], half[s]
 		local rs = math.max(hull[s], hull[s + 1]) / HULL
 		for dx = -1, 1 do
 			for dy = -1, 1 do
@@ -565,8 +572,12 @@ local function Nearby(c, p, n, link)
 							if t > s + 1 then
 								local rt = math.max(hull[t], hull[t + 1]) / HULL
 								if (t - s) * link >= (rs + rt) * SELF_ARC then
-									found[count + 1], found[count + 2] = s, t
-									count = count + 2
+									local ex, ey, ez = midx[t] - mx, midy[t] - my, midz[t] - mz
+									local reach = hs + half[t] + rs + rt + SELF_MARGIN
+									if ex * ex + ey * ey + ez * ez < reach * reach then
+										found[count + 1], found[count + 2] = s, t
+										count = count + 2
+									end
 								end
 							end
 						end
