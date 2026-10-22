@@ -47,6 +47,8 @@ EvilSnake.SETTINGS = {
 		help = "How fast eating the same kind of thing over and over stops teaching it anything" },
 	{ name = "wits", default = 1, min = 0, max = 3, decimals = 2, label = "Uses what it learns",
 		help = "How much everything it has learned from what it ate makes it faster, stronger and sharper. At 0 it learns but never uses any of it" },
+	{ name = "open_doors", default = 1, min = 0, max = 1, label = "Opens doors",
+		help = "Its tongue flicks doors in its way open, locked or not" },
 	{ name = "wander", default = 1, min = 0, max = 1, label = "Wanders",
 		help = "Crawls around on its own when there is nothing to hunt" },
 	{ name = "wall_addiction", default = 0, min = 0, max = 1, label = "Wall addiction",

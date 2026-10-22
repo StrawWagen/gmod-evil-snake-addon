@@ -18,6 +18,11 @@ local DETOUR = 1.5
 local WANDER_TURN = 90
 local WANDER_TIME = { 3, 7 }
 local BITE = "npc/ichthyosaur/snap.wav"
+local DOORS = { prop_door_rotating = true, func_door = true, func_door_rotating = true }
+local DOOR_REACH = 48
+local DOOR_GAP = 2
+local DOOR_DELAY = 0.2
+local DOOR_SLAP = "physics/flesh/flesh_impact_hard2.wav"
 local CRUNCH = { "npc/barnacle/barnacle_crunch2.wav", "npc/barnacle/barnacle_crunch3.wav" }
 local SQUISH = {
 	"physics/flesh/flesh_squishy_impact_hard1.wav", "physics/flesh/flesh_squishy_impact_hard2.wav",
@@ -1086,6 +1091,35 @@ function ENT:Follow(c, head)
 	return true
 end
 
+function ENT:Doors(now)
+	local c = self.Chain
+	if Setting("open_doors") == 0 or c.speed <= 0 or now < (self.NextDoor or 0) then return end
+	local head = c.x[1]
+	local fwd = Angle(0, EvilSnake.Chain.HeadYaw(c), 0):Forward()
+	local tr = util.TraceLine({
+		start = head, endpos = head + fwd * (self:Radius() * 2 + DOOR_REACH), mask = MASK_SOLID,
+		filter = function(e) return e ~= self and not e.EvilHitboxOwner and not e.EvilSnakeRide end,
+	})
+	local door = tr.Entity
+	if not IsValid(door) or not DOORS[door:GetClass()] then return end
+	self.NextDoor = now + DOOR_GAP
+	local tongue, at = self.Tongue, tr.HitPos
+	if tongue.state == EvilSnake.TONGUE_IN then
+		local to = at - tongue.mouth
+		tongue:Start(self, nil, to:Length() + 8, to:GetNormalized())
+	end
+	timer.Simple(DOOR_DELAY, function()
+		if not IsValid(door) or not IsValid(self) then return end
+		door:Fire("Unlock")
+		if door:GetClass() == "prop_door_rotating" then
+			door:Fire("OpenAwayFrom", "!activator", 0, self)
+		else
+			door:Fire("Open")
+		end
+		sound.Play(DOOR_SLAP, at, 80, math.random(80, 100))
+	end)
+end
+
 function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
@@ -1105,6 +1139,7 @@ function ENT:Decide(now)
 		return
 	end
 	if self:Follow(c, head) then return end
+	self:Doors(now)
 	if self.LastHead and c.speed > 0 then
 		local moved = self.LastHead:Distance(head)
 		if moved < c.speed * DECIDE * STUCK then
