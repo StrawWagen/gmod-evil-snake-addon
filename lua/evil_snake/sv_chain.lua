@@ -346,6 +346,7 @@ end
 local function Climb(c, i, from, to, reached)
 	local height = Setting("step_height")
 	if height <= 0 then return end
+	height = height + Setting("radius") * c.girth
 	local flat = Vector(to.x - from.x, to.y - from.y, 0)
 	if flat:Length() < 1e-3 then return end
 	local top = Hull(c, i, from, from + UP * height).HitPos
