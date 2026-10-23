@@ -108,6 +108,26 @@ local FOLLOW_STEEP = 0.7
 local FOLLOW_INTO = 4
 local FOLLOW_WALLS = 16
 local FOLLOW_WALL_LOOK = 3000
+local BACK_PACE = 0.6
+local BACK_SLOWEST = 40
+local BACK_TIME = 1
+local BACK_STEP = 0.5
+local BACK_LIMIT = 6
+local BACK_REST = 4
+local BEHIND = 110
+local TURN_ROOM = 4
+local PASS_HULL = 0.75
+local PASS_MAX = 16
+local PULLS = 3
+local CRUMB_GAP = 48
+local CRUMBS = 64
+local CRUMB_CHECKS = 6
+local TRAIL_TRUST = 3
+local TRAIL_OFF = 4
+local TRACK_EVERY = 1
+local TRACK_SPAN = 4
+local LOITER_TRAVEL = 200
+local LOITER_SHARE = 0.2
 
 local HANDLE_RESIZE = 1
 local GRIP_SNAP = 8
@@ -914,7 +934,7 @@ function ENT:Die(dmg)
 	self.Prey = nil
 	self:SetPrey(NULL)
 	local c = self.Chain
-	c.walls, c.ceilings = 0, 0
+	c.walls, c.ceilings, c.back = 0, 0, 0
 	EvilSnake.Chain.Drive(c, EvilSnake.Chain.HeadYaw(c), 0)
 	Unsuppressed(function()
 		for i = 1, #c.x, GUTS do self:Bleed(c.x[i], 2) end
@@ -995,12 +1015,73 @@ function ENT:Front(prey, head, aim)
 	return tr.HitPos - fwd * (tr.Hit and self:Radius() * 2 or 0)
 end
 
+local pass = { mins = Vector(), maxs = Vector(), mask = MASK_SOLID }
+
+function ENT:Passable(from, to)
+	local c = self.Chain
+	local hull = c.hull[1]
+	local h = math.min(hull, PASS_MAX) * PASS_HULL
+	local lift = Setting("step_height") * 0.5
+	pass.mins:SetUnpacked(-h, -h, -h)
+	pass.maxs:SetUnpacked(h, h, h)
+	pass.start = Vector(from.x, from.y, from.z + lift)
+	pass.endpos = Vector(to.x, to.y, to.z + hull + lift)
+	pass.filter = c.filter
+	return not util.TraceHull(pass).Hit
+end
+
+function ENT:Sniff(prey)
+	local s = self.Scent
+	local at = prey:GetPos()
+	if not s or s.prey ~= prey then
+		self.Scent = { prey = prey, pts = { at }, i = 1, held = -math.huge }
+		return
+	end
+	if Airborne(prey) and not self.Chain.fly then return end
+	local pts = s.pts
+	if pts[#pts]:DistToSqr(at) < CRUMB_GAP * CRUMB_GAP then return end
+	pts[#pts + 1] = at
+	if #pts > CRUMBS then
+		table.remove(pts, 1)
+		s.i = math.max(1, s.i - 1)
+	end
+end
+
+function ENT:Trail(head, now)
+	local s = self.Scent
+	local pts = s.pts
+	local n = #pts
+	local near = self:Radius() * 2 + WAYPOINT
+	while s.i <= n do
+		local at = pts[s.i]
+		if (at.x - head.x) ^ 2 + (at.y - head.y) ^ 2 > near * near then break end
+		s.i = s.i + 1
+	end
+	if s.i > n then return end
+	local step = math.max(1, math.ceil((n - s.i) / CRUMB_CHECKS))
+	for j = n, s.i + 1, -step do
+		if self:Passable(head, pts[j]) then
+			s.i, s.held = j, now
+			break
+		end
+	end
+	if s.held ~= now and self:Passable(head, pts[s.i]) then s.held = now end
+	if now - s.held > TRAIL_TRUST then return end
+	return pts[s.i]
+end
+
 function ENT:Goal(prey, head, now)
 	local aim = self:Lead(prey, head)
 	local route = self.Route
-	if self:Level(aim, head) and Clear(self, head, prey) then
+	local scent = self.Scent
+	if self:Level(aim, head) and self:Passable(head, prey:GetPos()) then
+		scent.i, scent.held = #scent.pts, now
 		if route then route.redo = now end
 		return aim
+	end
+	if now >= (self.TrailOff or 0) then
+		local crumb = self:Trail(head, now)
+		if crumb then return crumb + Vector(0, 0, self:Radius()) end
 	end
 	if not route or route.prey ~= prey or now >= route.redo then
 		local r = self:Radius()
@@ -1016,9 +1097,13 @@ function ENT:Goal(prey, head, now)
 	local pts = route.pts
 	if not pts or #pts == 0 then return self:Front(prey, head, aim) end
 	local near = self:Radius() * 2 + WAYPOINT
+	local pulls = 0
 	while route.i < #pts do
 		local at = pts[route.i]
-		if (at.x - head.x) ^ 2 + (at.y - head.y) ^ 2 > near * near then break end
+		if (at.x - head.x) ^ 2 + (at.y - head.y) ^ 2 > near * near then
+			if pulls >= PULLS or not self:Passable(head, pts[route.i + 1]) then break end
+			pulls = pulls + 1
+		end
 		route.i = route.i + 1
 	end
 	if route.i >= #pts then return aim end
@@ -1120,6 +1205,76 @@ function ENT:Doors(now)
 	end)
 end
 
+function ENT:Back(now, seconds, detour)
+	local c = self.Chain
+	if c.fly or self.Gripped then return false end
+	EvilSnake.Chain.Back(c, seconds, math.max(Setting("hunt_speed") * self.Sharp.speed * BACK_PACE, BACK_SLOWEST))
+	self.BackUntil, self.BackDetour, self.Track = now + seconds, detour, nil
+	return true
+end
+
+function ENT:Detour(now, yaw)
+	self.WanderYaw = yaw
+	self.NextWander = now + math.Rand(WANDER_TIME[1], WANDER_TIME[2])
+	self.DetourUntil = now + DETOUR
+end
+
+function ENT:Cramped(head, yaw)
+	local reach = self:Radius() * TURN_ROOM
+	local side = Angle(0, yaw + 90, 0):Forward() * reach
+	local filter = self.Chain.filter
+	local a = util.TraceLine({ start = head, endpos = head + side, mask = MASK_SOLID, filter = filter }).Fraction
+	local b = util.TraceLine({ start = head, endpos = head - side, mask = MASK_SOLID, filter = filter }).Fraction
+	return a + b < 1
+end
+
+function ENT:Turnabout(now, c, head, yaw)
+	if c.fly or EvilSnake.Chain.Surface(c) ~= "floor" or now < (self.BackRest or 0) then return false end
+	if math.abs(math.AngleDifference(self.GoalYaw, yaw)) <= BEHIND or not self:Cramped(head, yaw) then
+		self.Backed = 0
+		return false
+	end
+	self.Backed = (self.Backed or 0) + BACK_STEP
+	if self.Backed > BACK_LIMIT then
+		self.Backed, self.BackRest = 0, now + BACK_REST
+		EvilSnake.Chain.Ghost(c, SLIP)
+		return false
+	end
+	return self:Back(now, BACK_STEP, false)
+end
+
+function ENT:Loiter(now, c, head)
+	if now < (self.NextTrack or 0) then return false end
+	self.NextTrack = now + TRACK_EVERY
+	local track = self.Track
+	if not track or now - track[#track][3] > TRACK_EVERY * 2 then track = {} end
+	self.Track = track
+	track[#track + 1] = { Vector(head), c.speed, now }
+	if #track > TRACK_SPAN then table.remove(track, 1) end
+	if #track < TRACK_SPAN then return false end
+	local travel = 0
+	for k = 2, #track do travel = travel + track[k][2] * TRACK_EVERY end
+	return travel >= LOITER_TRAVEL and head:Distance(track[1][1]) < travel * LOITER_SHARE
+end
+
+function ENT:Unstick(now, c, head)
+	local level = now < (self.StuckAgain or 0) and (self.StuckLevel or 0) + 1 or 1
+	self.StuckLevel, self.StuckAgain = level, now + STUCK_AGAIN
+	self.Stuck, self.Track = 0, nil
+	EvilSnake.Chain.Squeeze(c, SQUEEZE)
+	c.climb = -c.climb
+	if IsValid(self.Prey) and self:Above(self.Prey, head) then EvilSnake.Watch(self.Prey, "climbed") end
+	if self.Route then self.Route.redo = now end
+	if level >= 2 then
+		EvilSnake.Chain.Ghost(c, SLIP)
+		if level == 2 and navmesh.IsLoaded() then self.TrailOff = now + TRAIL_OFF end
+	end
+	local open = EvilSnake.Chain.Opening(c, level < 3 and self.GoalYaw or nil)
+	local behind = math.abs(math.AngleDifference(open, EvilSnake.Chain.HeadYaw(c))) > BEHIND
+	if (level >= 2 or behind) and self:Back(now, BACK_TIME * math.min(level, 3), true) then return end
+	self:Detour(now, open)
+end
+
 function ENT:Decide(now)
 	local c = self.Chain
 	local head = c.x[1]
@@ -1140,23 +1295,25 @@ function ENT:Decide(now)
 	end
 	if self:Follow(c, head) then return end
 	self:Doors(now)
-	if self.LastHead and c.speed > 0 then
-		local moved = self.LastHead:Distance(head)
-		if moved < c.speed * DECIDE * STUCK then
-			self.Stuck = (self.Stuck or 0) + DECIDE
-		else
-			self.Stuck = 0
+	local backing = self.BackUntil ~= nil
+	if backing and now >= self.BackUntil then
+		backing, self.BackUntil = false, nil
+		if self.BackDetour then self:Detour(now, EvilSnake.Chain.Opening(c, (self.StuckLevel or 0) < 3 and self.GoalYaw or nil)) end
+	end
+	if not backing then
+		if self.LastHead and c.speed > 0 then
+			local moved = self.LastHead:Distance(head)
+			if moved < c.speed * DECIDE * STUCK then
+				self.Stuck = (self.Stuck or 0) + DECIDE
+			else
+				self.Stuck = 0
+			end
 		end
-		if self.Stuck >= STUCK_TIME then
-			self.Stuck = 0
-			EvilSnake.Chain.Squeeze(c, SQUEEZE)
-			if now < (self.StuckAgain or 0) then EvilSnake.Chain.Ghost(c, SLIP) end
-			self.StuckAgain = now + STUCK_AGAIN
-			c.climb = -c.climb
-			if IsValid(self.Prey) and self:Above(self.Prey, head) then EvilSnake.Watch(self.Prey, "climbed") end
-			self.WanderYaw = EvilSnake.Chain.Opening(c)
-			self.NextWander = now + math.Rand(WANDER_TIME[1], WANDER_TIME[2])
-			self.DetourUntil = now + DETOUR
+		if (self.Stuck or 0) >= STUCK_TIME then
+			self:Unstick(now, c, head)
+		elseif self:Loiter(now, c, head) then
+			self.StuckLevel, self.StuckAgain = math.max(self.StuckLevel or 0, 1), now + STUCK_AGAIN
+			self:Unstick(now, c, head)
 		end
 	end
 	self.LastHead = Vector(head)
@@ -1169,15 +1326,26 @@ function ENT:Decide(now)
 	end
 	self.Prey = prey
 	if self:GetPrey() ~= (prey or NULL) then self:SetPrey(prey or NULL) end
+	if prey then self:Sniff(prey) else self.GoalYaw = nil end
+	if self.BackUntil then
+		EvilSnake.Chain.Drive(c, yaw, 0)
+		return
+	end
 
 	if prey and now >= (self.DetourUntil or 0) and c.fly then
 		local aim = Clear(self, head, prey) and self:Lead(prey, head) or self:Goal(prey, head, now)
 		local to = aim - head
-		EvilSnake.Chain.Drive(c, math.deg(math.atan2(to.y, to.x)), Setting("fly_speed") * self.Sharp.speed, aim)
+		self.GoalYaw = math.deg(math.atan2(to.y, to.x))
+		EvilSnake.Chain.Drive(c, self.GoalYaw, Setting("fly_speed") * self.Sharp.speed, aim)
 	elseif prey and now >= (self.DetourUntil or 0) then
 		local aim = self:Goal(prey, head, now)
 		local to = aim - head
 		local r = self:Radius()
+		self.GoalYaw = math.deg(math.atan2(to.y, to.x))
+		if self:Turnabout(now, c, head, yaw) then
+			EvilSnake.Chain.Drive(c, yaw, 0)
+			return
+		end
 		if to.z > r then c.climb = 1 elseif to.z < -r then c.climb = -1 end
 		self:Drop(prey, head)
 		local near = r * 2 + WAYPOINT
