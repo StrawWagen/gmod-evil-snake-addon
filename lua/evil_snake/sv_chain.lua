@@ -69,6 +69,10 @@ local TIGHT_CHECKS = 16
 local TIGHT_LOOK = 2
 local TIGHT_GAIN = 0.25
 local TIGHT_MASK = bit.band(MASK_SOLID, bit.bnot(CONTENTS_MONSTER))
+local PIVOT = 20
+local PREFER = 0.35
+local CALM_LOOK = 4
+local CALM_HULL = 2
 local ESCAPE = {
 	Vector(0, 0, 1), Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
 	Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0), Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
@@ -82,7 +86,7 @@ function Chain.New(joints, filter)
 		x = {}, old = {}, p = {}, cn = {}, cd = {}, filter = filter, awake = true, still = 0, acc = 0, nap = 0,
 		mins = Vector(), maxs = Vector(), hull = {}, trail = {}, arcs = {}, speed = 0, phase = 0, girth = 1, stretch = 1, wet = {},
 		up = Vector(0, 0, 1), walls = 0, ceilings = 0, climb = 1, letgo = 0, tick = 0,
-		ghost = 0, knot = 0, firm = 1, squeeze = 0, squeezing = 0,
+		ghost = 0, knot = 0, firm = 1, squeeze = 0, squeezing = 0, back = 0, backSpeed = 0, calm = 1,
 	}
 	c.trace = { mins = c.mins, maxs = c.maxs, mask = MASK_SOLID, filter = filter }
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
@@ -174,9 +178,15 @@ function Chain.Squeeze(c, seconds)
 	c.awake, c.still = true, 0
 end
 
+function Chain.Back(c, seconds, speed)
+	c.back, c.backSpeed = math.max(c.back, seconds), speed
+	c.speed, c.driving = 0, false
+	c.awake, c.still = true, 0
+end
+
 function Chain.Limp(c, seconds)
 	Chain.LetGo(c, seconds)
-	c.speed, c.want, c.aim, c.driving = 0, 0, nil, false
+	c.speed, c.want, c.aim, c.driving, c.back = 0, 0, nil, false, 0
 end
 
 function Chain.Pin(c, i, pos)
@@ -456,7 +466,7 @@ local function Dodge(c)
 	return px, py
 end
 
-function Chain.Opening(c)
+function Chain.Opening(c, prefer)
 	local x, hull = c.x, c.hull
 	local head = x[1] + UP
 	local r = hull[1] / HULL
@@ -468,6 +478,7 @@ function Chain.Opening(c)
 		local dir = Angle(0, yaw, 0):Forward()
 		local tr = Hull(c, 1, head, head + dir * len)
 		local score = tr.StartSolid and 0 or tr.Fraction
+		if prefer then score = score + PREFER * math.cos(math.rad(yaw - prefer)) end
 		for i = 3, #x do
 			local d = x[i] - head
 			local along = d:Dot(dir)
@@ -482,7 +493,7 @@ end
 
 local function Steer(c)
 	local wave = math.max(Setting("wavelength"), c.speed / MAX_WAVES)
-	local sway = math.min(Setting("sway"), MAX_SWING * wave / (2 * math.pi * math.max(c.speed, 1)))
+	local sway = math.min(Setting("sway"), MAX_SWING * wave / (2 * math.pi * math.max(c.speed, 1))) * c.calm
 	local aim, dist = c.aim, nil
 	if aim then
 		local head = c.x[1]
@@ -498,7 +509,8 @@ local function Steer(c)
 		Reseed(c)
 	end
 	local goal = c.goal
-	local px, py = Dodge(c)
+	local px, py = 0, 0
+	if c.ghost <= 0 then px, py = Dodge(c) end
 	if px ~= 0 or py ~= 0 then
 		local g = math.rad(goal)
 		goal = math.deg(math.atan2(math.sin(g) + py * DODGE, math.cos(g) + px * DODGE))
@@ -691,6 +703,24 @@ local function Land(c, wall)
 	if c.goal then c.goal = Chain.Away(c.goal, out) end
 end
 
+local function Reverse(c, p, n, d)
+	local x, cn = c.x, c.cn
+	for i = 1, n - 1 do
+		local a, b, v = x[i], x[i + 1], p[i]
+		local len = a:Distance(b)
+		local t = len > 1e-4 and math.min(d / len, 1) or 0
+		v:SetUnpacked(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t + math.min(0, v.z - a.z))
+	end
+	local tail, v = x[n], p[n]
+	local dir = tail - x[n - 1]
+	local normal = cn[n]
+	if normal then dir = dir - normal * dir:Dot(normal) end
+	local len = dir:Length()
+	if len < 1e-4 then return end
+	dir:Mul(d / len)
+	v:SetUnpacked(tail.x + dir.x, tail.y + dir.y, tail.z + dir.z + math.min(0, v.z - tail.z))
+end
+
 local function Tick(c)
 	local x, old, p, cn, cd = c.x, c.old, c.p, c.cn, c.cd
 	local n = #x
@@ -725,14 +755,30 @@ local function Tick(c)
 		p[i] = x[i] + (x[i] - old[i]) * (fly and i == 1 and hover or soak > 0 and wetDamp or damp) + pull
 	end
 	local want = c.want or 0
-	if c.driving and c.goal then
-		want = want * math.max(math.cos(math.rad(math.AngleDifference(c.goal, c.yaw))), TURN_SLOW)
+	local back = c.back > 0 and not fly and not c.pinned
+	if back then
+		c.back = math.max(0, c.back - DT)
+		want, c.speed = 0, 0
+	elseif c.driving and c.goal then
+		local diff = math.AngleDifference(c.goal, c.yaw)
+		want = want * math.max(math.cos(math.rad(diff)), TURN_SLOW)
+		if c.aim then
+			local dx, dy = c.aim.x - x[1].x, c.aim.y - x[1].y
+			local s = math.abs(diff) >= 90 and 1 or math.abs(math.sin(math.rad(diff)))
+			if s > 1e-3 then
+				local turn = math.rad(Setting("turn_rate") * (c.quick or 1))
+				want = math.min(want, math.max(math.sqrt(dx * dx + dy * dy) / (2 * s) * turn, PIVOT))
+			end
+		end
 	end
 	c.speed = c.speed + (want - c.speed) * math.min(1, PACE * DT)
 	if want <= 0 and c.speed < CRAWL then c.speed = 0 end
 	local swim = not fly and wet[1] > 0 and (not cn[1] or wet[1] >= 1 and not (c.aim and c.aim.z < x[1].z))
 	local propped = c.propped
-	if c.speed > 0 then
+	if back then
+		Reverse(c, p, n, c.backSpeed * DT)
+		c.driving = false
+	elseif c.speed > 0 then
 		local step = Steer(c)
 		local hold = Hold(c, cn[1])
 		if fly then
@@ -765,16 +811,17 @@ local function Tick(c)
 	local g = c.pinned and math.min(c.pinned, n)
 	if g then p[g]:Set(c.pinnedAt) end
 	local pin = not g and (fly or c.driving and (cn[1] ~= nil or propped or swim))
+	local tail = back and not g and n or nil
 	local found = c.ghost <= 0 and Setting("self_collide") ~= 0 and n > 3 and Nearby(c, p, n, link) or nil
 	if found and #found == 0 then found = nil end
 	c.propped = false
 	local touching = 0
 	for _ = 1, Setting("solver_passes") do
 		for i = 1, n - 1 do
-			Pull(p[i], p[i + 1], link, i == 1 and pin or i == g, false, i + 1 == g)
+			Pull(p[i], p[i + 1], link, i == 1 and pin or i == g, false, i + 1 == g or i + 1 == tail)
 		end
 		for i = 1, n - 2 do
-			Pull(p[i], p[i + 2], folds[i], i == 1 and pin or i == g, true, i + 2 == g)
+			Pull(p[i], p[i + 2], folds[i], i == 1 and pin or i == g, true, i + 2 == g or i + 2 == tail)
 		end
 		if found then touching = math.max(touching, Separate(c, p, found)) end
 		for i = 1, n do
@@ -816,7 +863,8 @@ local function Tick(c)
 end
 
 local function Split(c)
-	local split = math.Clamp(math.ceil(c.speed * BASE / (Chain.Link(c) * STRIDE)), 1, MAX_SPLIT)
+	local speed = c.back > 0 and math.max(c.speed, c.backSpeed) or c.speed
+	local split = math.Clamp(math.ceil(speed * BASE / (Chain.Link(c) * STRIDE)), 1, MAX_SPLIT)
 	local step = BASE / split
 	local was = c.dt or BASE
 	if step ~= was then
@@ -860,12 +908,24 @@ local function Tight(c)
 	return not thin.StartSolid and thin.Fraction > full.Fraction + TIGHT_GAIN
 end
 
+local function Calm(c)
+	local normal = c.cn[1]
+	if not (c.driving and c.speed > 0 and normal and normal.z >= FLOOR) then return 1 end
+	local r = c.hull[1] / HULL
+	local reach = r * CALM_LOOK
+	local side = Angle(0, c.yaw + 90, 0):Forward() * reach
+	local head = c.x[1]
+	local gap = math.min(Fits(c, CALM_HULL, head, head + side).Fraction, Fits(c, CALM_HULL, head, head - side).Fraction) * reach
+	return math.Clamp((gap - r) / r, 0, 1)
+end
+
 function Chain.Update(c, dt)
 	if c.awake then
 		c.tight = (c.tight or 0) - dt
 		if c.tight <= 0 then
 			c.tight = TIGHT_EVERY
 			if Tight(c) then Chain.Squeeze(c, TIGHT_HOLD) end
+			c.calm = Calm(c)
 		end
 	end
 	if c.squeezing > 0 then c.squeezing = math.max(0, c.squeezing - dt) end
@@ -891,7 +951,7 @@ function Chain.Update(c, dt)
 		moved = math.max(moved, Tick(c))
 		stepped = true
 	end
-	if moved > REST * REST or c.speed > 0 then
+	if moved > REST * REST or c.speed > 0 or c.back > 0 then
 		c.still = 0
 	else
 		c.still = c.still + dt
