@@ -80,6 +80,7 @@ local ESCAPE = {
 }
 
 local folds = {}
+local Size
 
 function Chain.New(joints, filter)
 	local c = {
@@ -90,6 +91,7 @@ function Chain.New(joints, filter)
 	}
 	c.trace = { mins = c.mins, maxs = c.maxs, mask = MASK_SOLID, filter = filter }
 	for i, j in ipairs(joints) do c.x[i], c.old[i] = Vector(j), Vector(j) end
+	Size(c)
 	return c
 end
 
@@ -125,7 +127,7 @@ local function Hull(c, i, from, to)
 	return util.TraceHull(q)
 end
 
-local function Size(c)
+function Size(c)
 	local r = Setting("radius") * c.girth * HULL
 	local body, tail = EvilSnake.Shape()
 	local n = #c.x
